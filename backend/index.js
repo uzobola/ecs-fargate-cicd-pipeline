@@ -1,8 +1,6 @@
 const express = require('express')
 const { v4: uuidv4 } = require('uuid');
 const { CORS_ORIGIN } = require('./config')
-console.log(require('./config'))
-console.log(CORS_ORIGIN)
 
 const ID = uuidv4()
 const PORT = 8080

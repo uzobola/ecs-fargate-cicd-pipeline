@@ -1,1 +1,38 @@
 node_modules/
+# Node
+node_modules/
+npm-debug.log*
+build/
+coverage/
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Credentials and keys
+*.pem
+*.key
+.aws/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+package-lock.json
+.terraform.lock.hcl
+.env.development
+.env.production
