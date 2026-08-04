@@ -2,7 +2,7 @@
 # node:18 to match .nvmrc / the version that's actually verified to build
 # this project cleanly (see repo history: newer Node breaks postcss's
 # nested-package resolution in this toolchain).
-FROM node:18-alpine AS build
+FROM node:16.20.2-alpine AS build
 
 WORKDIR /app
 
