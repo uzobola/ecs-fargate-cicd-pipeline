@@ -1,7 +1,6 @@
-# --- Stage 1: build the static bundle ---
-# node:18 to match .nvmrc / the version that's actually verified to build
-# this project cleanly (see repo history: newer Node breaks postcss's
-# nested-package resolution in this toolchain).
+# Node.js 16.20.2 is retained only in this temporary build stage.
+# The supplied react-scripts 4.0.3/Webpack 4 toolchain was validated
+# under this version. The final runtime image contains Nginx, not Node.js.
 FROM node:16.20.2-alpine AS build
 
 WORKDIR /app

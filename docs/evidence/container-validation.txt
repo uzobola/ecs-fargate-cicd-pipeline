@@ -1,0 +1,30 @@
+Phase 2 container validation
+UTC timestamp: Wed Aug  5 22:30:31 UTC 2026
+
+Running containers:
+CONTAINER ID   IMAGE                                COMMAND                  CREATED          STATUS          PORTS                                         NAMES
+ae519f7d0519   nginxinc/nginx-unprivileged:alpine   "/docker-entrypoint.…"   38 minutes ago   Up 38 minutes   0.0.0.0:8088->8088/tcp, [::]:8088->8088/tcp   tc1-router
+5c465e366114   tc1-backend:phase2                   "docker-entrypoint.s…"   43 minutes ago   Up 43 minutes   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp   tc1-backend
+136f99669859   tc1-frontend:phase2                  "/docker-entrypoint.…"   49 minutes ago   Up 49 minutes   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp   tc1-frontend
+
+Backend identity:
+Configured user: node
+uid=1000(node) gid=1000(node) groups=1000(node)
+
+Frontend identity:
+Configured user: 101
+uid=101(nginx) gid=101(nginx) groups=101(nginx)
+
+Backend health:
+{"status":"ok"}
+HTTP status: 200
+
+Integrated API:
+{"id":"32f31ead-5531-4fe7-9acf-3a20381ff222"}
+HTTP status: 200
+
+Integrated frontend:
+HTTP status: 200; content type: text/html
+
+SPA fallback:
+HTTP status: 200; content type: text/html
