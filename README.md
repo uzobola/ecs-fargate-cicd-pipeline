@@ -57,3 +57,21 @@ A few examples of extras for this coding challenge:
 4. Running the application in a serverless environment
 
 This is not an exhaustive list of extra features that could be added to this code challenge. At the end of the day, this section is for you to demonstrate any skills you want to show that’s not captured in the core requirement.
+
+### Node.js compatibility
+
+The supplied frontend uses React 17 and `react-scripts 4.0.3`. This repository
+pins Node.js 16.20.2 through `.nvmrc` to preserve compatibility with the supplied
+frontend build tooling.
+
+Run the following before installing or building frontend dependencies:
+
+```bash
+nvm use
+node --version
+
+### Expected output:
+
+v16.20.2
+
+A future application modernization should migrate the frontend build tooling to a current Node.js release and a current bundler. That migration is outside the scope of this infrastructure-focused challenge.
