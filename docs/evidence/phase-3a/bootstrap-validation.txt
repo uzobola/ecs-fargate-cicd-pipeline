@@ -1,0 +1,111 @@
+Phase 3A: Terraform state bucket validation
+UTC timestamp: Fri, Aug  7, 2026 12:10:10 AM
+
+Execution identity:
+{
+    "UserId": "AROAWEH5YI5AKEDK4BAT6:1786060107435274000",
+    "Account": "421438965568",
+    "Arn": "arn:aws:sts::421438965568:assumed-role/TerraformExecutionRole/1786060107435274000"
+}
+
+Bucket: ecs-fargate-cicd-tfstate-421438965568-us-east-1
+
+Versioning:
+{
+    "Status": "Enabled"
+}
+
+Public access block:
+{
+    "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+    }
+}
+
+Policy status:
+{
+    "PolicyStatus": {
+        "IsPublic": false
+    }
+}
+
+Ownership controls:
+{
+    "OwnershipControls": {
+        "Rules": [
+            {
+                "ObjectOwnership": "BucketOwnerEnforced"
+            }
+        ]
+    }
+}
+
+Encryption:
+{
+    "ServerSideEncryptionConfiguration": {
+        "Rules": [
+            {
+                "ApplyServerSideEncryptionByDefault": {
+                    "SSEAlgorithm": "AES256"
+                },
+                "BucketKeyEnabled": false
+            }
+        ]
+    }
+}
+
+Tags:
+{
+    "TagSet": [
+        {
+            "Key": "Project",
+            "Value": "ecs-fargate-cicd"
+        },
+        {
+            "Key": "Environment",
+            "Value": "shared"
+        },
+        {
+            "Key": "Owner",
+            "Value": "uzobola"
+        },
+        {
+            "Key": "Purpose",
+            "Value": "Terraform remote state"
+        },
+        {
+            "Key": "ManagedBy",
+            "Value": "Terraform"
+        }
+    ]
+}
+
+Terraform state entries:
+data.aws_caller_identity.current
+data.aws_iam_policy_document.terraform_state
+aws_s3_bucket.terraform_state
+aws_s3_bucket_ownership_controls.terraform_state
+aws_s3_bucket_policy.terraform_state
+aws_s3_bucket_public_access_block.terraform_state
+aws_s3_bucket_server_side_encryption_configuration.terraform_state
+aws_s3_bucket_versioning.terraform_state
+
+Idempotency:
+data.aws_caller_identity.current: Reading...
+data.aws_caller_identity.current: Read complete after 0s [id=421438965568]
+aws_s3_bucket.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_ownership_controls.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_public_access_block.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_versioning.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_server_side_encryption_configuration.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+data.aws_iam_policy_document.terraform_state: Reading...
+data.aws_iam_policy_document.terraform_state: Read complete after 0s [id=3578670199]
+aws_s3_bucket_policy.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

@@ -1,0 +1,70 @@
+Phase 3A: Terraform state migration validation
+UTC timestamp: Fri, Aug  7, 2026 12:47:25 AM
+
+Execution identity:
+{
+    "UserId": "AROAWEH5YI5AKEDK4BAT6:1786063645624507100",
+    "Account": "421438965568",
+    "Arn": "arn:aws:sts::421438965568:assumed-role/TerraformExecutionRole/1786063645624507100"
+}
+
+Remote state inventory:
+data.aws_caller_identity.current
+data.aws_iam_policy_document.terraform_state
+aws_s3_bucket.terraform_state
+aws_s3_bucket_ownership_controls.terraform_state
+aws_s3_bucket_policy.terraform_state
+aws_s3_bucket_public_access_block.terraform_state
+aws_s3_bucket_server_side_encryption_configuration.terraform_state
+aws_s3_bucket_versioning.terraform_state
+
+Remote state object:
+{
+    "AcceptRanges": "bytes",
+    "LastModified": "2026-08-07T00:41:38+00:00",
+    "ContentLength": 13408,
+    "ETag": "\"8afff8de04a0243b1aa5cbe6c76c2727\"",
+    "VersionId": "nhROohdUdRs73cJM.j_il9ddMMwejfGf",
+    "ContentType": "application/json",
+    "ServerSideEncryption": "AES256",
+    "Metadata": {}
+}
+
+Remote state versions:
+[
+    {
+        "Key": "bootstrap/terraform.tfstate",
+        "VersionId": "nhROohdUdRs73cJM.j_il9ddMMwejfGf",
+        "IsLatest": true,
+        "LastModified": "2026-08-07T00:41:38+00:00"
+    },
+    {
+        "Key": "bootstrap/terraform.tfstate.tflock",
+        "VersionId": "ogPRRA8JY4_YsF3Nl.rosfoOeDlfzf6B",
+        "IsLatest": false,
+        "LastModified": "2026-08-07T00:43:04+00:00"
+    },
+    {
+        "Key": "bootstrap/terraform.tfstate.tflock",
+        "VersionId": "rUM_HNSAlE.K6n4W5enwf7wRDQNVlXZ6",
+        "IsLatest": false,
+        "LastModified": "2026-08-07T00:41:34+00:00"
+    }
+]
+
+Post-migration idempotency:
+data.aws_caller_identity.current: Reading...
+data.aws_caller_identity.current: Read complete after 0s [id=421438965568]
+aws_s3_bucket.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_public_access_block.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_ownership_controls.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_versioning.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+aws_s3_bucket_server_side_encryption_configuration.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+data.aws_iam_policy_document.terraform_state: Reading...
+data.aws_iam_policy_document.terraform_state: Read complete after 0s [id=3578670199]
+aws_s3_bucket_policy.terraform_state: Refreshing state... [id=ecs-fargate-cicd-tfstate-421438965568-us-east-1]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
