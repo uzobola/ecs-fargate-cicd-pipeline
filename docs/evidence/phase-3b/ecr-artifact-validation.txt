@@ -1,0 +1,85 @@
+Phase 3B.2: ECR artifact publication and scan validation
+UTC timestamp: Fri, Aug  7, 2026  6:48:01 AM
+
+Application source tag: fbfbbe4665da
+
+Registry scanning configuration:
+{
+    "registryId": "421438965568",
+    "scanningConfiguration": {
+        "scanType": "BASIC",
+        "rules": [
+            {
+                "scanFrequency": "SCAN_ON_PUSH",
+                "repositoryFilters": [
+                    {
+                        "filter": "ecs-fargate-cicd-*",
+                        "filterType": "WILDCARD"
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+Frontend artifact:
+{
+    "imageDetails": [
+        {
+            "registryId": "421438965568",
+            "repositoryName": "ecs-fargate-cicd-frontend",
+            "imageDigest": "sha256:6984132d99b446a66e9ff610a8339b1019f858cd8267c1310e14a5b73ee3e674",
+            "imageTags": [
+                "fbfbbe4665da"
+            ],
+            "imageSizeInBytes": 23213518,
+            "imagePushedAt": "2026-08-07T00:00:09.634000-05:00",
+            "imageManifestMediaType": "application/vnd.oci.image.index.v1+json"
+        }
+    ]
+}
+
+Frontend platform-image scan:
+{
+    "Status": "COMPLETE",
+    "CompletedAt": "2026-08-07T00:00:17-05:00",
+    "SeverityCounts": {}
+}
+
+Backend artifact:
+{
+    "imageDetails": [
+        {
+            "registryId": "421438965568",
+            "repositoryName": "ecs-fargate-cicd-backend",
+            "imageDigest": "sha256:b785477b5c10ac772ee9ecd4bcd5195bb0ae14fab6ccac75e29e50cd7d76b726",
+            "imageTags": [
+                "fbfbbe4665da"
+            ],
+            "imageSizeInBytes": 59293022,
+            "imagePushedAt": "2026-08-07T00:00:26.320000-05:00",
+            "imageManifestMediaType": "application/vnd.oci.image.index.v1+json"
+        }
+    ]
+}
+
+Backend platform-image scan:
+{
+    "Status": "COMPLETE",
+    "CompletedAt": "2026-08-07T00:00:35-05:00",
+    "SeverityCounts": {}
+}
+
+Terraform idempotency:
+data.aws_region.current: Reading...
+data.aws_caller_identity.current: Reading...
+aws_ecr_registry_scanning_configuration.project: Refreshing state... [id=421438965568]
+data.aws_region.current: Read complete after 0s [id=us-east-1]
+aws_ecr_repository.backend: Refreshing state... [id=ecs-fargate-cicd-backend]
+aws_ecr_repository.frontend: Refreshing state... [id=ecs-fargate-cicd-frontend]
+data.aws_caller_identity.current: Read complete after 0s [id=421438965568]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

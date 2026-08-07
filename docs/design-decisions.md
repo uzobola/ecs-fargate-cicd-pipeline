@@ -52,3 +52,52 @@ The bootstrap state is stored under:
 
 ```text
 bootstrap/terraform.tfstate
+
+
+## ADR-003: Use immutable source-derived image tags and registry-level ECR scanning
+
+### Context
+
+The frontend and backend images must be traceable to source and protected from
+silent tag replacement.
+
+Docker BuildKit publishes the images as OCI image indexes. Each index references
+the platform-specific container image and a small provenance/attestation
+manifest.
+
+Amazon ECR Basic vulnerability findings are associated with the platform-image
+digest rather than the parent OCI index.
+
+### Decision
+
+Application images use the most recent Git commit that changed the application
+or container source as the image tag.
+
+For this deployment:
+
+```text
+fbfbbe4665da
+```
+
+ECR repositories use immutable tags.
+
+Basic vulnerability scanning is configured through an ECR registry-level
+`SCAN_ON_PUSH` rule scoped to:
+
+```text
+ecs-fargate-cicd-*
+```
+
+Terraform manages the registry scanning rule.
+
+### Consequences
+
+- An existing source-derived tag cannot be silently overwritten.
+- A Git source revision can be correlated with its published image artifact.
+- The ECR digest provides the cryptographic identity of the published content.
+- OCI-index tags and platform-image digests are treated as separate artifact
+  identities.
+- ECR Basic scan findings are queried against the platform-image digest.
+- ECR Basic scanning covers the container-image vulnerability scope provided by
+  that service; the CI/CD pipeline will use Trivy as a separate image-security
+  control.
