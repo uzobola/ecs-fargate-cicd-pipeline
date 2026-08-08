@@ -1,0 +1,218 @@
+---
+# Configure the Terraform-provisioned Amazon Linux 2023 EC2 instance as the
+# Jenkins CI/CD controller and build host for this challenge.
+#
+# Infrastructure provisioning remains Terraform's responsibility.
+# This playbook manages only operating-system and CI/CD tooling configuration.
+
+- name: Configure Jenkins CI/CD host
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Jenkins LTS RPM repository and current repository signing key.
+    jenkins_repo_url: "https://pkg.jenkins.io/rpm-stable/jenkins.repo"
+    jenkins_signing_key_url: "https://pkg.jenkins.io/rpm-stable/jenkins.io-2026.key"
+
+    # Keep Checkov isolated from the system Python installation.
+    checkov_virtualenv: "/opt/checkov"
+
+  tasks:
+    # -----------------------------------------------------------------------
+    # Host validation
+    # -----------------------------------------------------------------------
+
+    - name: Verify the managed host is Amazon Linux 2023
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Amazon"
+          - ansible_distribution_major_version == "2023"
+        fail_msg: >-
+          This playbook is intended for the Amazon Linux 2023 Jenkins host.
+        success_msg: "Amazon Linux 2023 host confirmed."
+
+    # -----------------------------------------------------------------------
+    # Base operating-system packages
+    # -----------------------------------------------------------------------
+
+    - name: Install base Jenkins build-host packages
+      ansible.builtin.dnf:
+        name:
+          - git
+          - jq
+          - unzip
+          - wget
+          - curl-minimal
+          - fontconfig
+          - java-21-amazon-corretto
+          - docker
+          - python3
+          - python3-pip
+        state: present
+        update_cache: true
+
+    # -----------------------------------------------------------------------
+    # Jenkins package repository
+    # -----------------------------------------------------------------------
+
+    - name: Install Jenkins RPM repository definition
+      ansible.builtin.get_url:
+        url: "{{ jenkins_repo_url }}"
+        dest: /etc/yum.repos.d/jenkins.repo
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Import Jenkins 2026 RPM signing key
+      ansible.builtin.rpm_key:
+        state: present
+        key: "{{ jenkins_signing_key_url }}"
+
+    - name: Install Jenkins LTS
+      ansible.builtin.dnf:
+        name: jenkins
+        state: present
+        update_cache: true
+
+    # -----------------------------------------------------------------------
+    # Trivy container vulnerability scanner
+    # -----------------------------------------------------------------------
+
+    - name: Configure Trivy RPM repository
+      ansible.builtin.copy:
+        dest: /etc/yum.repos.d/trivy.repo
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [trivy]
+          name=Trivy repository
+          baseurl=https://aquasecurity.github.io/trivy-repo/rpm/releases/$basearch/
+          gpgcheck=1
+          enabled=1
+          gpgkey=https://aquasecurity.github.io/trivy-repo/rpm/public.key
+
+    - name: Install Trivy
+      ansible.builtin.dnf:
+        name: trivy
+        state: present
+        update_cache: true
+
+    # -----------------------------------------------------------------------
+    # Checkov IaC scanner
+    # -----------------------------------------------------------------------
+
+    # Checkov is installed into a dedicated Python virtual environment so its
+    # dependencies do not modify the operating system's Python environment.
+    - name: Install Checkov into dedicated Python virtual environment
+      ansible.builtin.pip:
+        name: checkov
+        state: present
+        virtualenv: "{{ checkov_virtualenv }}"
+        virtualenv_command: "/usr/bin/python3 -m venv"
+
+    - name: Expose Checkov through /usr/local/bin
+      ansible.builtin.file:
+        src: "{{ checkov_virtualenv }}/bin/checkov"
+        dest: /usr/local/bin/checkov
+        state: link
+        owner: root
+        group: root
+
+    # -----------------------------------------------------------------------
+    # Docker permissions
+    # -----------------------------------------------------------------------
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    # Jenkins must invoke Docker during pipeline image builds.
+    #
+    # Docker-group membership gives the Jenkins process high privilege on this
+    # temporary CI/CD host. This is an accepted challenge-environment tradeoff.
+    - name: Add Jenkins service account to Docker group
+      ansible.builtin.user:
+        name: jenkins
+        groups:
+          - docker
+        append: true
+
+    - name: Add EC2 administrator account to Docker group
+      ansible.builtin.user:
+        name: ec2-user
+        groups:
+          - docker
+        append: true
+
+    # -----------------------------------------------------------------------
+    # Jenkins service
+    # -----------------------------------------------------------------------
+
+    # Starting Jenkins after group membership is configured means the Jenkins
+    # process receives Docker-group membership on its first launch.
+    - name: Enable and start Jenkins
+      ansible.builtin.systemd_service:
+        name: jenkins
+        enabled: true
+        state: started
+
+    # -----------------------------------------------------------------------
+    # Installation verification
+    # -----------------------------------------------------------------------
+
+    - name: Verify Java
+      ansible.builtin.command:
+        cmd: java -version
+      register: java_version
+      changed_when: false
+
+    - name: Verify Git
+      ansible.builtin.command:
+        cmd: git --version
+      register: git_version
+      changed_when: false
+
+    - name: Verify Docker
+      ansible.builtin.command:
+        cmd: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Verify AWS CLI
+      ansible.builtin.command:
+        cmd: aws --version
+      register: aws_version
+      changed_when: false
+
+    - name: Verify jq
+      ansible.builtin.command:
+        cmd: jq --version
+      register: jq_version
+      changed_when: false
+
+    - name: Verify Trivy
+      ansible.builtin.command:
+        cmd: trivy --version
+      register: trivy_version
+      changed_when: false
+
+    - name: Verify Checkov
+      ansible.builtin.command:
+        cmd: checkov --version
+      register: checkov_version
+      changed_when: false
+
+    - name: Report installed CI/CD tooling
+      ansible.builtin.debug:
+        msg:
+          - "{{ java_version.stderr_lines | default(java_version.stdout_lines) }}"
+          - "{{ git_version.stdout }}"
+          - "{{ docker_version.stdout }}"
+          - "{{ aws_version.stdout }}"
+          - "{{ jq_version.stdout }}"
+          - "{{ trivy_version.stdout }}"
+          - "{{ checkov_version.stdout }}"

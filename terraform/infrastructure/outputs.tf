@@ -183,3 +183,32 @@ output "cloudwatch_log_groups" {
     backend  = aws_cloudwatch_log_group.backend.name
   }
 }
+
+# ---------------------------------------------------------------------------
+# Jenkins outputs
+# ---------------------------------------------------------------------------
+
+output "jenkins_instance_id" {
+  description = "EC2 instance ID of the Jenkins CI/CD host."
+  value       = aws_instance.jenkins.id
+}
+
+output "jenkins_public_ip" {
+  description = "Stable public IPv4 address of the Jenkins CI/CD host."
+  value       = aws_eip.jenkins.public_ip
+}
+
+output "jenkins_url" {
+  description = "Public URL used to access Jenkins."
+  value       = "http://${aws_eip.jenkins.public_ip}:8080"
+}
+
+output "jenkins_role_arn" {
+  description = "IAM role assumed by the Jenkins EC2 host."
+  value       = aws_iam_role.jenkins.arn
+}
+
+output "jenkins_ami_id" {
+  description = "Amazon Linux 2023 AMI selected for the Jenkins host."
+  value       = aws_instance.jenkins.ami
+}

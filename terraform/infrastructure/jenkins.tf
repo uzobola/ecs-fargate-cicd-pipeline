@@ -168,6 +168,21 @@ data "aws_iam_policy_document" "jenkins_deployment" {
     ]
   }
 
+  # Resolve the Terraform-created ALB DNS name during post-deployment validation.
+  #
+  # DescribeLoadBalancers is read-only and lets the pipeline verify the deployed
+  # application without hardcoding a generated ALB hostname.
+  statement {
+    sid    = "DiscoverApplicationLoadBalancer"
+    effect = "Allow"
+
+    actions = [
+      "elasticloadbalancing:DescribeLoadBalancers"
+    ]
+
+    resources = ["*"]
+  }
+
   # RegisterTaskDefinition must be able to pass the execution roles referenced
   # by the frontend and backend task definitions.
   #
@@ -332,8 +347,21 @@ resource "aws_instance" "jenkins" {
     Name = "${var.project_name}-jenkins"
     Tier = "cicd"
   }
-}
 
+  # The AMI data source selects a current Amazon Linux 2023 image for a new
+  # Jenkins deployment.
+  #
+  # AWS regularly publishes newer AL2023 AMIs. A newer image appearing in the
+  # data-source result should not cause Terraform to replace an already
+  # configured Jenkins controller during an unrelated infrastructure change.
+  #
+  # AMI upgrades are treated as an explicit maintenance operation.
+  lifecycle {
+    ignore_changes = [
+      ami
+    ]
+  }
+}
 
 # ---------------------------------------------------------------------------
 # Stable Jenkins public IPv4 address
