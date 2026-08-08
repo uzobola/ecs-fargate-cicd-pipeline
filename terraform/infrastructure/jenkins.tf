@@ -348,17 +348,17 @@ resource "aws_instance" "jenkins" {
     Tier = "cicd"
   }
 
-  # The AMI data source selects a current Amazon Linux 2023 image for a new
-  # Jenkins deployment.
+  # Preserve the configured Jenkins host across changes to launch-time-only
+  # attributes that are intentionally controlled through other resources.
   #
-  # AWS regularly publishes newer AL2023 AMIs. A newer image appearing in the
-  # data-source result should not cause Terraform to replace an already
-  # configured Jenkins controller during an unrelated infrastructure change.
-  #
-  # AMI upgrades are treated as an explicit maintenance operation.
+  # - AMI upgrades are explicit maintenance operations.
+  # - The Jenkins Elastic IP is the authoritative public address. Changing the
+  #   EC2 auto-assigned public-IP launch setting would require replacing the
+  #   instance and provides no benefit once the EIP is attached.
   lifecycle {
     ignore_changes = [
-      ami
+      ami,
+      associate_public_ip_address
     ]
   }
 }
