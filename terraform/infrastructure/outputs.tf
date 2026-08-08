@@ -149,3 +149,37 @@ output "http_listener_arn" {
   description = "ARN of the ALB HTTP listener."
   value       = aws_lb_listener.http.arn
 }
+
+# ECS identifiers are exposed so later Jenkins deployment steps do not need
+# hardcoded cluster or service names.
+output "ecs_cluster_name" {
+  description = "Name of the ECS Fargate cluster."
+  value       = aws_ecs_cluster.application.name
+}
+
+output "ecs_service_names" {
+  description = "Frontend and backend ECS service names."
+
+  value = {
+    frontend = aws_ecs_service.frontend.name
+    backend  = aws_ecs_service.backend.name
+  }
+}
+
+output "ecs_task_definition_families" {
+  description = "Task-definition family names used by the application services."
+
+  value = {
+    frontend = aws_ecs_task_definition.frontend.family
+    backend  = aws_ecs_task_definition.backend.family
+  }
+}
+
+output "cloudwatch_log_groups" {
+  description = "CloudWatch log groups used by the ECS services."
+
+  value = {
+    frontend = aws_cloudwatch_log_group.frontend.name
+    backend  = aws_cloudwatch_log_group.backend.name
+  }
+}

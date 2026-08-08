@@ -44,3 +44,16 @@ variable "vpc_cidr" {
     error_message = "vpc_cidr must be a valid IPv4 CIDR block."
   }
 }
+
+# Immutable ECR image tag used for the initial Terraform-managed ECS deployment.
+#
+# The tag identifies the most recent committed application/container source
+# used to build the currently published frontend and backend images.
+#
+# Later Jenkins deployments will publish new immutable source-derived tags and
+# register new ECS task-definition revisions.
+variable "app_image_tag" {
+  description = "Immutable ECR image tag used by the baseline ECS task definitions."
+  type        = string
+  default     = "fbfbbe4665da"
+}
