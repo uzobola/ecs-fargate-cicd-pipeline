@@ -20,6 +20,10 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Local Terraform inputs
+terraform.tfvars
+*.auto.tfvars
+
 # Credentials and keys
 *.pem
 *.key
