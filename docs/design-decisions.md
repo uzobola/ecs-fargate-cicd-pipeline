@@ -101,3 +101,230 @@ Terraform manages the registry scanning rule.
 - ECR Basic scanning covers the container-image vulnerability scope provided by
   that service; the CI/CD pipeline will use Trivy as a separate image-security
   control.
+
+  ## ADR-004: Use one NAT Gateway per Availability Zone for private egress
+
+### Context
+
+The application network spans two Availability Zones and places ECS workloads
+in private subnets.
+
+A single NAT Gateway could provide outbound internet access for both private
+subnets at lower cost, but it would create a cross-AZ dependency.
+
+For example:
+
+```text
+Private us-east-1a ─┐
+                    ├── NAT us-east-1a
+Private us-east-1b ─┘
+```
+
+A failure affecting the NAT Gateway or its Availability Zone could remove
+private egress from both application zones.
+
+### Decision
+
+Create one public NAT Gateway in each Availability Zone.
+
+Each private subnet uses a dedicated private route table whose default route
+points to the NAT Gateway in the same AZ.
+
+```text
+Private us-east-1a
+        |
+        v
+Private RT us-east-1a
+        |
+        v
+NAT us-east-1a
+```
+
+and:
+
+```text
+Private us-east-1b
+        |
+        v
+Private RT us-east-1b
+        |
+        v
+NAT us-east-1b
+```
+
+Both public subnets share one public route table since their routing policy is
+identical:
+
+```text
+0.0.0.0/0 -> Internet Gateway
+```
+
+### Architecture qualities
+
+This choice improves:
+
+- failure-domain separation
+- AZ independence
+- private-egress availability
+- fault isolation
+- blast-radius reduction
+
+The two private route tables are not redundant copies. They preserve
+AZ-specific routing policy so each private subnet uses its local NAT Gateway.
+
+### Alternatives rejected
+
+#### One shared NAT Gateway
+
+Rejected for this implementation since the surviving AZ would depend on a NAT
+Gateway located in the failed AZ.
+
+#### Separate public route table per AZ
+
+Rejected since both public subnets require the same Internet Gateway route.
+Duplicating the route table would not remove a meaningful failure dependency.
+
+#### VPC endpoints for all AWS service traffic
+
+Not implemented in this challenge.
+
+VPC endpoints could reduce NAT dependence and tighten AWS-service egress, but
+would add several endpoint resources, security policies, cost, and additional
+validation work outside the immediate challenge requirement.
+
+### Consequences
+
+- two NAT Gateways incur greater hourly cost than one
+- each private subnet retains AZ-local outbound routing
+- a routing change in one private route table does not automatically alter the
+  other private subnet
+- the environment should be destroyed promptly after challenge validation to
+  avoid unnecessary NAT Gateway charges
+
+
+  ## ADR-005: Use one public ALB with path-based routing to isolated application services
+
+### Context
+
+The supplied application contains two services:
+
+```text
+React/Nginx frontend
+Express backend
+```
+
+The frontend uses the relative API path:
+
+```text
+/api
+```
+
+Publishing the frontend and backend through unrelated public endpoints would
+require the browser to know a separate backend address and would introduce a
+separate browser origin.
+
+The ECS services also require independent ports and health checks.
+
+### Decision
+
+Use one internet-facing Application Load Balancer spanning both public
+subnets.
+
+Create separate target groups:
+
+```text
+Frontend
+HTTP/3000
+health check /
+target type ip
+
+Backend
+HTTP/8080
+health check /health
+target type ip
+```
+
+Use an HTTP listener on TCP/80.
+
+Route:
+
+```text
+/api
+/api/*
+    ->
+backend target group
+```
+
+Use the frontend target group as the listener default action.
+
+This produces:
+
+```text
+http://<alb-dns>/
+        ->
+frontend
+
+http://<alb-dns>/api
+        ->
+backend
+```
+
+The browser therefore uses one public origin.
+
+The frontend container does not proxy backend traffic.
+
+### Security boundary
+
+Only the ALB security group accepts public application traffic.
+
+The frontend security group permits TCP/3000 from the ALB security group.
+
+The backend security group permits TCP/8080 from the ALB security group.
+
+No frontend-to-backend application rule is required.
+
+### Architecture qualities
+
+The design supports:
+
+- load distribution
+- Layer-7 service routing
+- service isolation
+- health-based routing
+- horizontal-scaling support
+- decoupling from individual ECS task addresses
+- multi-AZ availability at the load-balancing tier
+- reduced direct application attack surface
+
+### High Availability limitation
+
+The ALB spans two Availability Zones and provides a multi-AZ public entry tier.
+
+That does not prove the complete application is highly available.
+
+Application availability later depends on the number, placement, and health of
+ECS tasks.
+
+The challenge requires a minimum and desired ECS task count of one, so a
+single running task may still create a temporary interruption during task
+failure or replacement.
+
+### HTTP tradeoff
+
+The challenge deployment uses HTTP because no managed DNS name or ACM
+certificate is part of the current scope.
+
+A production design would normally terminate TLS at the ALB and redirect HTTP
+to HTTPS.
+
+This limitation is accepted and documented rather than adding a non-production
+certificate workaround.
+
+### Consequences
+
+- clients use one stable ALB endpoint
+- ECS task IP changes do not require frontend configuration changes
+- frontend and backend health are evaluated independently
+- `/api` traffic does not depend on the frontend Nginx container
+- ALB listener rules become part of the application routing contract
+- TLS remains a documented production improvement
