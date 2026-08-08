@@ -26,7 +26,7 @@ supplied application toolchain during an infrastructure-focused challenge.
 
 
 
-  ## ADR-002: Use an encrypted and versioned S3 backend with native lock files
+## ADR-002: Use an encrypted and versioned S3 backend with native lock files
 
 ### Context
 
@@ -52,7 +52,25 @@ The bootstrap state is stored under:
 
 ```text
 bootstrap/terraform.tfstate
+```
 
+The main infrastructure state is stored separately under:
+
+```text
+infrastructure/terraform.tfstate
+```
+
+This separates management of the state backend itself from the application
+infrastructure that uses that backend.
+
+### Consequences
+
+- Terraform state is stored remotely rather than being tied to one workstation.
+- State versioning provides recovery points for earlier state versions.
+- Native S3 lock files coordinate Terraform state operations.
+- Public access to the state bucket is blocked.
+- Insecure transport is denied.
+- Bootstrap and application infrastructure use separate state objects.
 
 ## ADR-003: Use immutable source-derived image tags and registry-level ECR scanning
 
@@ -102,7 +120,7 @@ Terraform manages the registry scanning rule.
   that service; the CI/CD pipeline will use Trivy as a separate image-security
   control.
 
-  ## ADR-004: Use one NAT Gateway per Availability Zone for private egress
+## ADR-004: Use one NAT Gateway per Availability Zone for private egress
 
 ### Context
 
@@ -202,7 +220,7 @@ validation work outside the immediate challenge requirement.
   avoid unnecessary NAT Gateway charges
 
 
-  ## ADR-005: Use one public ALB with path-based routing to isolated application services
+## ADR-005: Use one public ALB with path-based routing to isolated application services
 
 ### Context
 
