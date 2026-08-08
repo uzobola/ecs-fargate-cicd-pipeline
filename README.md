@@ -71,7 +71,7 @@ when frontend-to-backend communication is working.
 - [x] ECS steady-state validation
 - [x] Live post-deployment validation
 - [x] GitHub webhook-triggered Jenkins builds
-- [ ] Auto Scaling load-test evidence
+- [x] Auto Scaling load-test evidence
 - [ ] GitHub Actions GitOps bonus
 
 ---
