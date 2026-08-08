@@ -37,22 +37,20 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                /*
-                 * SCM credentials are configured on the Jenkins job.
-                 * No GitHub token is stored in this Jenkinsfile.
-                 */
-                checkout scm
-
                 script {
-                    /*
-                     * Each image tag contains:
-                     *
-                     *   Git commit -> source traceability
-                     *   Jenkins build number -> unique immutable ECR tag
-                     *
-                     * Example:
-                     *   8d37e5f20a11-14
-                     */
+                    // checkout() returns the Git metadata directly.
+                    // Capture it rather than assuming GIT_COMMIT was exported
+                    // automatically into the Jenkins environment.
+                    def scmVars = checkout scm
+
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+
+                    if (!env.GIT_COMMIT) {
+                        error('Git checkout completed but no commit SHA was returned.')
+                    }
+
+                    // Use the source revision plus Jenkins build number to create
+                    // a traceable and unique immutable image tag.
                     env.IMAGE_TAG =
                         "${env.GIT_COMMIT.take(12)}-${env.BUILD_NUMBER}"
                 }
