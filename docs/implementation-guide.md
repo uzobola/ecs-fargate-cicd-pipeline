@@ -6381,3 +6381,99 @@ groups, health-check configuration, and path-based Layer-7 routing.
 
 ECS Fargate is the next dependency required to register healthy application
 targets behind the load balancer.
+
+## ADR-006: Use Fargate services with separated execution identities and CI/CD ownership
+
+### Context
+
+The application contains separate frontend and backend containers that must run
+on ECS Fargate.
+
+The challenge requires each service to use:
+
+```text
+512 CPU units
+1024 MiB memory
+minimum capacity 1
+desired capacity 1
+maximum capacity 4
+50% CPU target tracking
+```
+
+Future Jenkins deployments must register new task-definition revisions without
+Terraform attempting to revert them.
+
+### Decision
+
+Run the frontend and backend as separate ECS Fargate services using `awsvpc`
+networking.
+
+Each service receives:
+
+```text
+its own task definition
+its own ECS service
+its own security group
+its own target group
+its own CloudWatch log group
+its own execution IAM role
+its own auto-scaling target and policy
+```
+
+No application task role is created since the application code does not call
+AWS APIs.
+
+Terraform creates the baseline task definitions and ECS service
+infrastructure.
+
+Application Auto Scaling manages runtime desired task count.
+
+Jenkins will manage deployment task-definition revisions.
+
+Terraform ignores later changes to:
+
+```text
+desired_count
+task_definition
+```
+
+on the ECS services.
+
+### Architecture qualities
+
+This design supports:
+
+- workload isolation
+- least privilege
+- desired-state reconciliation
+- task-level self-healing
+- horizontal scalability
+- CPU-based elasticity
+- health-based request routing
+- deployment rollback
+- separation of infrastructure and deployment ownership
+
+### Availability limitation
+
+The ECS services are configured across private subnets in two Availability
+Zones.
+
+The required desired count is one.
+
+At baseline capacity, each service therefore has a single running task.
+
+ECS can replace a failed task, but a recovery interval may exist before the
+replacement becomes healthy.
+
+This provides resilience and automated recovery rather than guaranteed
+zero-interruption workload fault tolerance.
+
+### Consequences
+
+- no EC2 container hosts require management
+- application tasks receive no public IP addresses
+- frontend and backend AWS execution permissions remain separated
+- application containers receive zero AWS API permissions
+- Auto Scaling may change desired task count without Terraform reverting it
+- Jenkins may deploy new task revisions without Terraform reverting them
+- task-definition revisions provide a versioned deployment history
