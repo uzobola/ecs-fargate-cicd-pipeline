@@ -297,6 +297,27 @@ resource "aws_vpc_security_group_egress_rule" "jenkins_https" {
   ip_protocol = "tcp"
 }
 
+# ---------------------------------------------------------------------------
+# Jenkins application-validation egress
+# ---------------------------------------------------------------------------
+
+# The challenge application currently uses an HTTP listener on the public ALB.
+#
+# Jenkins performs an end-to-end post-deployment request against that public
+# endpoint. Permit outbound HTTP so the pipeline can validate the same
+# application entry point used by external clients.
+#
+# This rule can be removed when the application moves to HTTPS-only access.
+resource "aws_vpc_security_group_egress_rule" "jenkins_http" {
+  security_group_id = aws_security_group.jenkins.id
+
+  description = "Allow HTTP egress for post-deployment ALB validation."
+
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 80
+  to_port     = 80
+  ip_protocol = "tcp"
+}
 
 # ---------------------------------------------------------------------------
 # Jenkins EC2 instance

@@ -6477,3 +6477,952 @@ zero-interruption workload fault tolerance.
 - Auto Scaling may change desired task count without Terraform reverting it
 - Jenkins may deploy new task revisions without Terraform reverting them
 - task-definition revisions provide a versioned deployment history
+
+# Phase 4: Jenkins CI/CD Infrastructure
+
+## Purpose
+
+Provision and configure a Jenkins server that can build, scan, publish, and
+deploy the frontend and backend containers to the existing ECS Fargate
+environment.
+
+The responsibility boundary is:
+
+```text
+Terraform
+    |
+    +--> Jenkins EC2 infrastructure
+    +--> security group
+    +--> IAM role and instance profile
+    +--> SSH public key registration
+    +--> Elastic IP
+
+Ansible
+    |
+    +--> Java
+    +--> Jenkins
+    +--> Docker
+    +--> Git
+    +--> AWS CLI
+    +--> jq
+    +--> Trivy
+    +--> Checkov
+
+Jenkinsfile
+    |
+    +--> checkout
+    +--> security checks
+    +--> container builds
+    +--> ECR publication
+    +--> ECS deployment
+    +--> live validation
+```
+
+This separates infrastructure provisioning, host configuration, and application
+deployment into independently repeatable layers.
+
+---
+
+## 4.1 Jenkins infrastructure
+
+Jenkins runs on:
+
+```text
+Operating system: Amazon Linux 2023
+Architecture:     x86_64
+Instance type:    c7i-flex.large
+Root volume:      30 GiB gp3, encrypted
+Jenkins port:     TCP/8080
+SSH port:         TCP/22
+```
+
+The instance type is exposed as a Terraform variable and can be changed for
+another environment.
+
+Jenkins is placed in a public subnet and receives a stable Elastic IP.
+
+The EC2 instance does not rely on an auto-assigned public address for its
+long-lived Jenkins endpoint.
+
+```text
+Internet
+    |
+    v
+Elastic IP
+    |
+    v
+Jenkins EC2
+```
+
+The Elastic IP keeps the Jenkins URL stable across normal EC2 stop/start
+operations.
+
+---
+
+## 4.2 Jenkins security group
+
+The Jenkins security group permits:
+
+```text
+Inbound
+TCP/22    administrator-public-ip/32
+TCP/8080  0.0.0.0/0
+
+Outbound
+TCP/443   0.0.0.0/0
+TCP/80    0.0.0.0/0
+```
+
+SSH is restricted to a supplied administrator `/32` address.
+
+TCP/8080 is public so the Jenkins interface can be accessed for challenge
+grading and webhook delivery.
+
+HTTPS egress supports GitHub, AWS APIs, ECR, package repositories, and security
+tool downloads.
+
+HTTP egress permits Jenkins to perform post-deployment validation against the
+challenge ALB, which currently exposes the application through HTTP/80.
+
+A production implementation would normally place Jenkins behind HTTPS and use
+a more restricted administrative access model.
+
+---
+
+## 4.3 Jenkins AWS identity
+
+Jenkins does not store a long-lived AWS access key.
+
+Terraform creates:
+
+```text
+ecs-fargate-cicd-challenge-jenkins-role
+```
+
+and attaches it to EC2 through an instance profile.
+
+The resulting authentication path is:
+
+```text
+Jenkins process
+      |
+      v
+EC2 instance profile
+      |
+      v
+temporary STS credentials
+      |
+      v
+AWS APIs
+```
+
+The Jenkins role is scoped to the deployment operations required by the
+pipeline:
+
+```text
+ECR authentication
+push to the project frontend/backend repositories
+read/register ECS task definitions
+update the project frontend/backend ECS services
+pass only the application execution roles
+read the project ALB hostname
+```
+
+Jenkins cannot use this role to administer the VPC or Terraform state.
+
+Verify the workload identity from the Jenkins host:
+
+```bash
+sudo -u jenkins -H aws sts get-caller-identity
+```
+
+Expected ARN shape:
+
+```text
+arn:aws:sts::<account-id>:assumed-role/
+ecs-fargate-cicd-challenge-jenkins-role/<session>
+```
+
+---
+
+## 4.4 Create the SSH key
+
+Generate the administrative SSH key on the operator workstation:
+
+```bash
+ssh-keygen \
+  -t ed25519 \
+  -f ~/.ssh/ecs-fargate-cicd-jenkins \
+  -C "ecs-fargate-cicd-jenkins"
+```
+
+Protect the private key:
+
+```bash
+chmod 600 ~/.ssh/ecs-fargate-cicd-jenkins
+chmod 644 ~/.ssh/ecs-fargate-cicd-jenkins.pub
+```
+
+The private key remains local.
+
+Terraform receives only the public key.
+
+Create local Terraform inputs:
+
+```hcl
+jenkins_admin_cidr = "<administrator-public-ip>/32"
+jenkins_public_key = "<contents-of-public-key>"
+```
+
+Store these values in:
+
+```text
+terraform/infrastructure/terraform.tfvars
+```
+
+`terraform.tfvars` is ignored by Git.
+
+---
+
+## 4.5 Provision Jenkins with Terraform
+
+From the Terraform execution environment:
+
+```bash
+terraform -chdir=terraform/infrastructure fmt -recursive
+```
+
+Validate:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure validate
+```
+
+Plan:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure plan \
+  -out=jenkins.tfplan
+```
+
+Review the plan before apply.
+
+A new deployment should create the Jenkins EC2 host, IAM resources, security
+group rules, SSH key registration, and Elastic IP.
+
+Apply:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure apply \
+  jenkins.tfplan
+```
+
+Retrieve the management values:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure output \
+  jenkins_public_ip
+
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure output \
+  jenkins_url
+```
+
+---
+
+## 4.6 Jenkins EC2 lifecycle handling
+
+The Jenkins EC2 resource selects a current Amazon Linux 2023 AMI when a new
+instance is created.
+
+The resource lifecycle ignores later changes to:
+
+```text
+ami
+associate_public_ip_address
+```
+
+The first rule prevents a newly published Amazon Linux AMI from replacing an
+already configured Jenkins controller during an unrelated Terraform change.
+
+The second prevents replacement of the existing host solely to change the
+launch-time auto-public-IP flag. The Terraform-managed Elastic IP is the
+authoritative Jenkins public endpoint.
+
+AMI replacement remains an explicit maintenance operation rather than an
+incidental side effect of another change.
+
+---
+
+# Phase 4A.2: Configure Jenkins with Ansible
+
+## 4.7 Configuration-management boundary
+
+The EC2 instance is intentionally created without a large `user_data` bootstrap
+script.
+
+Ansible configures the operating system after Terraform creates the host.
+
+This provides a repeatable configuration workflow:
+
+```text
+fresh Amazon Linux EC2
+       |
+       v
+Ansible
+       |
+       +--> Java 21
+       +--> Jenkins LTS
+       +--> Docker
+       +--> Git
+       +--> AWS CLI
+       +--> jq
+       +--> Trivy
+       +--> Checkov
+```
+
+The committed playbook is:
+
+```text
+ansible/jenkins.yml
+```
+
+---
+
+## 4.8 Verify SSH access
+
+From the Ansible control machine:
+
+```bash
+JENKINS_IP="<terraform-output>"
+```
+
+Test SSH:
+
+```bash
+ssh \
+  -i ~/.ssh/ecs-fargate-cicd-jenkins \
+  ec2-user@"$JENKINS_IP"
+```
+
+Confirm:
+
+```bash
+cat /etc/os-release
+```
+
+The host must report Amazon Linux 2023.
+
+Exit:
+
+```bash
+exit
+```
+
+---
+
+## 4.9 Verify Ansible connectivity
+
+```bash
+ansible all \
+  -i "${JENKINS_IP}," \
+  -u ec2-user \
+  --private-key ~/.ssh/ecs-fargate-cicd-jenkins \
+  -m ansible.builtin.ping
+```
+
+Expected:
+
+```text
+SUCCESS
+"ping": "pong"
+```
+
+The trailing comma after the IP tells Ansible to treat the value as an inline
+inventory host.
+
+---
+
+## 4.10 Configure the host
+
+Syntax-check the playbook:
+
+```bash
+ansible-playbook \
+  --syntax-check \
+  ansible/jenkins.yml
+```
+
+Apply configuration:
+
+```bash
+ansible-playbook \
+  -i "${JENKINS_IP}," \
+  -u ec2-user \
+  --private-key ~/.ssh/ecs-fargate-cicd-jenkins \
+  ansible/jenkins.yml
+```
+
+The playbook installs and configures:
+
+```text
+Java 21
+Jenkins LTS
+Docker
+Git
+AWS CLI
+jq
+Trivy
+Checkov
+```
+
+It enables both Jenkins and Docker as system services.
+
+It places the `jenkins` service account in the Docker group so the pipeline can
+build container images.
+
+### Docker privilege tradeoff
+
+Docker-group membership gives the Jenkins service significant control over the
+host.
+
+This is accepted for the temporary single-host challenge environment.
+
+A production Jenkins architecture would normally separate the Jenkins
+controller from isolated build agents rather than running builds directly on
+the controller.
+
+---
+
+## 4.11 Verify configuration idempotency
+
+Run the same playbook again:
+
+```bash
+ansible-playbook \
+  -i "${JENKINS_IP}," \
+  -u ec2-user \
+  --private-key ~/.ssh/ecs-fargate-cicd-jenkins \
+  ansible/jenkins.yml
+```
+
+Required:
+
+```text
+failed=0
+```
+
+The managed configuration should converge without repeatedly reconfiguring
+resources that already match the playbook.
+
+---
+
+## 4.12 Verify Jenkins Docker access
+
+```bash
+ssh \
+  -i ~/.ssh/ecs-fargate-cicd-jenkins \
+  ec2-user@"$JENKINS_IP" \
+  'sudo -u jenkins -H docker ps'
+```
+
+The command must return without a Docker permission error.
+
+---
+
+## 4.13 Open Jenkins
+
+Retrieve the initial administrator password:
+
+```bash
+ssh \
+  -i ~/.ssh/ecs-fargate-cicd-jenkins \
+  ec2-user@"$JENKINS_IP" \
+  'sudo cat /var/lib/jenkins/secrets/initialAdminPassword'
+```
+
+Open:
+
+```text
+http://<jenkins-eip>:8080
+```
+
+Complete initial setup and install the suggested plugins.
+
+Create a permanent administrator account.
+
+Do not commit the bootstrap password or Jenkins credentials to Git.
+
+---
+
+# Phase 5: Jenkins CI/CD Pipeline
+
+## 5.1 GitHub source credential
+
+The project repository is private.
+
+Create a fine-grained GitHub personal access token restricted to:
+
+```text
+Repository:
+ecs-fargate-cicd-pipeline
+
+Permission:
+Contents - Read-only
+```
+
+Store it in Jenkins as:
+
+```text
+Kind:        Username with password
+Username:    <github-username>
+Password:    <fine-grained-PAT>
+Credential:  github-repo-read
+```
+
+The PAT is placed in the Jenkins password field for HTTPS Git authentication.
+
+No GitHub token is stored in the repository.
+
+---
+
+## 5.2 Create the Jenkins job
+
+Create:
+
+```text
+Job name:
+ecs-fargate-cicd-deploy
+
+Type:
+Pipeline
+```
+
+Configure:
+
+```text
+Definition:
+Pipeline script from SCM
+
+SCM:
+Git
+
+Repository URL:
+https://github.com/<owner>/ecs-fargate-cicd-pipeline.git
+
+Credentials:
+github-repo-read
+
+Branch:
+*/main
+
+Script Path:
+Jenkinsfile
+```
+
+This makes the committed `Jenkinsfile` the pipeline definition rather than
+storing pipeline logic inside the Jenkins UI.
+
+---
+
+## 5.3 Pipeline ownership
+
+Terraform owns:
+
+```text
+ECS cluster
+ECS service infrastructure
+networking
+load balancer
+baseline task definitions
+auto-scaling configuration
+```
+
+Jenkins owns:
+
+```text
+new application image versions
+new ECS task-definition revisions
+application deployments
+post-deployment validation
+```
+
+The ECS services ignore later Terraform changes to:
+
+```text
+desired_count
+task_definition
+```
+
+so Application Auto Scaling and Jenkins can modify those runtime fields without
+Terraform attempting to revert valid changes.
+
+---
+
+## 5.4 Pipeline stages
+
+The committed Jenkins pipeline runs:
+
+```text
+Checkout
+    |
+Verify AWS Identity
+    |
+Checkov IaC Scan
+    |
+Build Images
+    |
+Trivy Image Security Gate
+    |
+Authenticate to ECR
+    |
+Push Immutable Images
+    |
+Register Task Definitions
+    |
+Deploy to ECS
+    |
+Wait for Stable Services
+    |
+Validate Live Application
+    |
+Post Actions
+```
+
+---
+
+## 5.5 Immutable CI image tags
+
+Each pipeline build creates an image tag from:
+
+```text
+<12-character-git-commit>-<jenkins-build-number>
+```
+
+Example:
+
+```text
+e0ac840b5856-3
+```
+
+This provides:
+
+```text
+Git commit
+    -> source traceability
+
+Jenkins build number
+    -> build uniqueness
+```
+
+The repositories use immutable ECR tags, so an earlier artifact cannot be
+silently overwritten by a later pipeline execution.
+
+---
+
+## 5.6 Security checks
+
+### Checkov
+
+Checkov scans:
+
+```text
+terraform/infrastructure
+```
+
+The current pipeline runs Checkov with `--soft-fail`.
+
+Its findings remain visible in the build output and are reviewed as either:
+
+```text
+fix-now
+accepted-with-rationale
+```
+
+rather than blindly modifying infrastructure during the timed challenge.
+
+### Trivy
+
+Trivy scans both built container images for:
+
+```text
+HIGH
+CRITICAL
+```
+
+findings.
+
+The pipeline uses:
+
+```text
+--ignore-unfixed
+--exit-code 1
+```
+
+A fixable HIGH or CRITICAL vulnerability therefore blocks image publication and
+ECS deployment.
+
+During implementation, this gate successfully rejected a vulnerable backend
+image. The backend dependencies and runtime image were corrected, then the
+pipeline was rerun successfully.
+
+This proves the scan is an enforcement control rather than a reporting-only
+step.
+
+---
+
+## 5.7 ECR authentication
+
+Jenkins obtains its AWS identity from the EC2 instance profile.
+
+The pipeline requests a temporary ECR login password:
+
+```text
+EC2 instance role
+      |
+      v
+AWS STS credentials
+      |
+      v
+ECR login token
+      |
+      v
+docker login
+```
+
+No static AWS credentials are stored in Jenkins.
+
+---
+
+## 5.8 ECS deployment
+
+For each service, Jenkins:
+
+```text
+reads the currently deployed task definition
+        |
+changes only the application image URI
+        |
+removes response-only AWS fields
+        |
+registers a new task-definition revision
+        |
+updates the ECS service
+```
+
+This preserves the Terraform-created task settings instead of duplicating the
+entire task-definition model inside the Jenkinsfile.
+
+---
+
+## 5.9 Wait for ECS steady state
+
+After calling `UpdateService`, Jenkins does not immediately declare success.
+
+It waits for:
+
+```bash
+aws ecs wait services-stable
+```
+
+for both services.
+
+Successful deployment requires the services to reach:
+
+```text
+Desired = Running
+Pending = 0
+```
+
+This distinguishes an accepted AWS deployment request from a completed workload
+deployment.
+
+---
+
+# Phase 6: End-to-End Deployment Validation
+
+## 6.1 Live application validation
+
+The pipeline resolves the ALB hostname at runtime:
+
+```bash
+aws elbv2 describe-load-balancers
+```
+
+No generated ALB DNS name is hardcoded into the Jenkinsfile.
+
+Jenkins then verifies:
+
+```text
+GET /
+    -> HTTP 200
+
+GET /api
+    -> JSON response containing a GUID
+```
+
+The pipeline succeeds only after both checks pass.
+
+This validates both the deployment control path and the public application data
+path.
+
+---
+
+## 6.2 Manual validation
+
+Retrieve the ALB endpoint:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure output \
+  -raw alb_dns_name
+```
+
+Test frontend:
+
+```bash
+curl -i "http://<alb-dns>/"
+```
+
+Test backend routing:
+
+```bash
+curl -i "http://<alb-dns>/api"
+```
+
+Browser verification must display:
+
+```text
+SUCCESS: <GUID>
+```
+
+---
+
+## 6.3 GitHub webhook
+
+In Jenkins:
+
+```text
+Job
+-> Configure
+-> Build Triggers
+-> GitHub hook trigger for GITScm polling
+```
+
+In the GitHub repository create a webhook:
+
+```text
+Payload URL:
+http://<jenkins-eip>:8080/github-webhook/
+
+Content type:
+application/json
+
+Event:
+push
+```
+
+Verify automation by pushing a harmless committed change.
+
+Do not click `Build Now`.
+
+Expected flow:
+
+```text
+git push
+    |
+    v
+GitHub webhook
+    |
+    v
+Jenkins pipeline
+    |
+    v
+ECR
+    |
+    v
+ECS
+    |
+    v
+live application validation
+```
+
+Do not claim webhook validation as complete until a Git push has successfully
+started the Jenkins job.
+
+---
+
+## 6.4 Final Terraform idempotency check
+
+After Jenkins configuration and deployment changes are complete:
+
+```bash
+aws-vault exec terraform -- \
+  terraform -chdir=terraform/infrastructure plan
+```
+
+Required result:
+
+```text
+No changes. Your infrastructure matches the configuration.
+```
+
+This confirms Terraform no longer detects unintended infrastructure drift.
+
+---
+
+## Phase 4-6 Evidence
+
+Store concise evidence under:
+
+```text
+docs/evidence/screenshots/jenkins/
+```
+
+Recommended evidence:
+
+```text
+01-ansible-convergence.png
+02-jenkins-aws-role-identity.png
+03-jenkins-login-or-dashboard.png
+04-full-pipeline-success.png
+05-live-validation-success.png
+06-github-webhook-delivery.png
+```
+
+The strongest Jenkins evidence is a fresh pipeline execution in which all stages
+are green in one run.
+
+A restarted-from-stage build is useful troubleshooting evidence but should not
+replace the final full-pipeline screenshot.
+
+---
+
+## Phase 4-6 Acceptance Criteria
+
+Jenkins CI/CD is complete when:
+
+- Jenkins is publicly reachable on TCP/8080.
+- SSH is restricted to the approved administrator `/32`.
+- Jenkins infrastructure can be recreated through Terraform.
+- Jenkins host configuration can be recreated through Ansible.
+- Jenkins authenticates to AWS through an EC2 instance profile.
+- No static AWS credential is stored in Jenkins.
+- Jenkins can execute Docker builds.
+- The private GitHub repository can be read through the scoped Jenkins credential.
+- The pipeline definition is stored in the root `Jenkinsfile`.
+- Checkov runs before deployment.
+- Trivy blocks fixable HIGH/CRITICAL image vulnerabilities.
+- Frontend and backend images use immutable build-specific tags.
+- Both images are pushed to ECR.
+- New ECS task-definition revisions are registered.
+- Both ECS services are updated.
+- Jenkins waits for ECS services to become stable.
+- The live frontend returns HTTP 200.
+- `/api` returns a GUID.
+- A final Terraform plan reports no infrastructure changes.
+- A GitHub push triggers Jenkins automatically when webhook automation is enabled.

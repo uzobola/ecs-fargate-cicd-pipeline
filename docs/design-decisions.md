@@ -346,3 +346,102 @@ certificate workaround.
 - `/api` traffic does not depend on the frontend Nginx container
 - ALB listener rules become part of the application routing contract
 - TLS remains a documented production improvement
+
+## ADR-006: Provision Jenkins with Terraform and configure the host with Ansible
+
+### Context
+
+The challenge requires a publicly reachable Jenkins server and an automated
+Jenkins deployment pipeline.
+
+The challenge permits the Jenkins infrastructure to be created manually, but
+the environment should remain reproducible for another engineer.
+
+Jenkins requires both AWS infrastructure and operating-system configuration.
+
+These are different lifecycle concerns:
+
+```text
+Infrastructure
+EC2
+IAM
+security groups
+Elastic IP
+
+Host configuration
+Java
+Jenkins
+Docker
+security scanners
+supporting CLI tools
+```
+
+### Decision
+
+Provision the Jenkins infrastructure with Terraform.
+
+Configure the resulting Amazon Linux 2023 host with Ansible.
+
+Run Jenkins natively as a system service on the EC2 host rather than inside a
+Docker container.
+
+Use the EC2 instance profile for Jenkins AWS authentication rather than static
+AWS access keys.
+
+Use Docker on the Jenkins host to build the frontend and backend images.
+
+### Reasons
+
+Terraform makes the Jenkins AWS infrastructure repeatable and keeps it in the
+same infrastructure state model as the application environment.
+
+Ansible provides repeatable host configuration and can be rerun to verify
+configuration convergence.
+
+Native Jenkins avoids adding a Docker-in-Docker or Docker-socket-container
+layer to a pipeline that already needs Docker for application builds.
+
+The EC2 instance profile provides temporary AWS credentials without creating a
+long-lived Jenkins IAM access key.
+
+### Security tradeoff
+
+The Jenkins service account belongs to the Docker group so pipeline jobs can
+build images.
+
+Docker access gives that service account significant privilege on the Jenkins
+host.
+
+This is accepted for the temporary single-host challenge environment.
+
+A production architecture should separate the Jenkins controller from isolated
+build agents.
+
+Jenkins TCP/8080 remains internet-accessible for challenge grading and webhook
+delivery.
+
+A production endpoint should normally use HTTPS and a more restrictive access
+model.
+
+### Availability limitation
+
+The Jenkins deployment contains one EC2 instance.
+
+It is therefore a CI/CD single point of failure.
+
+A Jenkins outage prevents new deployments but does not stop the already-running
+ECS application.
+
+The application runtime and CI/CD control plane remain separate failure domains.
+
+### Consequences
+
+- Jenkins AWS infrastructure is reproducible through Terraform.
+- Jenkins operating-system configuration is reproducible through Ansible.
+- No static AWS access key is required by Jenkins.
+- Jenkins has a stable endpoint through an Elastic IP.
+- The Jenkinsfile remains the source-controlled deployment definition.
+- Docker builds can run directly on the host.
+- Jenkins host failure temporarily removes deployment capability.
+- Docker-group privilege remains an explicitly documented challenge tradeoff.
+
