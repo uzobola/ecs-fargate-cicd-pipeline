@@ -6,6 +6,7 @@
 locals {
   state_bucket_name = "${var.project_name}-tfstate-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
 
+  
   # These tags are applied through the provider's default_tags configuration.
   # They make the bucket's purpose and ownership visible in AWS inventory,
   # billing views, and security reviews.
@@ -43,6 +44,7 @@ resource "aws_s3_bucket_ownership_controls" "terraform_state" {
     object_ownership = "BucketOwnerEnforced"
   }
 }
+
 
 # Apply all four S3 Block Public Access controls.
 #

@@ -1,0 +1,384 @@
+Phase 3C: Multi-AZ network validation
+UTC timestamp: Sat, Aug  8, 2026  1:20:05 AM
+
+Subnets:
+[
+    {
+        "Name": "ecs-fargate-cicd-public-us-east-1b",
+        "Tier": "public",
+        "AZ": "us-east-1b",
+        "CIDR": "10.20.1.0/24",
+        "PublicIPv4OnLaunch": false
+    },
+    {
+        "Name": "ecs-fargate-cicd-private-us-east-1a",
+        "Tier": "private",
+        "AZ": "us-east-1a",
+        "CIDR": "10.20.10.0/24",
+        "PublicIPv4OnLaunch": false
+    },
+    {
+        "Name": "ecs-fargate-cicd-public-us-east-1a",
+        "Tier": "public",
+        "AZ": "us-east-1a",
+        "CIDR": "10.20.0.0/24",
+        "PublicIPv4OnLaunch": false
+    },
+    {
+        "Name": "ecs-fargate-cicd-private-us-east-1b",
+        "Tier": "private",
+        "AZ": "us-east-1b",
+        "CIDR": "10.20.11.0/24",
+        "PublicIPv4OnLaunch": false
+    }
+]
+
+NAT Gateways:
+{
+    "NatGateways": [
+        {
+            "CreateTime": "2026-08-07T22:37:02+00:00",
+            "NatGatewayAddresses": [
+                {
+                    "AllocationId": "eipalloc-03ac561ed0dbd6657",
+                    "NetworkInterfaceId": "eni-0d47af8d3d76445c4",
+                    "PrivateIp": "10.20.1.80",
+                    "PublicIp": "35.174.25.63",
+                    "AssociationId": "eipassoc-05f6be8dfb3ac802d",
+                    "IsPrimary": true,
+                    "Status": "succeeded"
+                }
+            ],
+            "NatGatewayId": "nat-01d7eac74d087d278",
+            "State": "available",
+            "SubnetId": "subnet-0dd37330b4270f20f",
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "Tags": [
+                {
+                    "Key": "Project",
+                    "Value": "ecs-fargate-cicd"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "challenge"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "uzobola"
+                },
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                },
+                {
+                    "Key": "Name",
+                    "Value": "ecs-fargate-cicd-nat-us-east-1b"
+                }
+            ],
+            "ConnectivityType": "public"
+        },
+        {
+            "CreateTime": "2026-08-07T22:37:02+00:00",
+            "NatGatewayAddresses": [
+                {
+                    "AllocationId": "eipalloc-03b46c8d021f78676",
+                    "NetworkInterfaceId": "eni-0dd1807879cb71f54",
+                    "PrivateIp": "10.20.0.63",
+                    "PublicIp": "100.25.188.23",
+                    "AssociationId": "eipassoc-0aca70ecb6e616874",
+                    "IsPrimary": true,
+                    "Status": "succeeded"
+                }
+            ],
+            "NatGatewayId": "nat-073de5d0adf67a603",
+            "State": "available",
+            "SubnetId": "subnet-09cb22e4ad8e11a97",
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "Tags": [
+                {
+                    "Key": "Project",
+                    "Value": "ecs-fargate-cicd"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "challenge"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "uzobola"
+                },
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                },
+                {
+                    "Key": "Name",
+                    "Value": "ecs-fargate-cicd-nat-us-east-1a"
+                }
+            ],
+            "ConnectivityType": "public"
+        }
+    ]
+}
+
+Route tables:
+{
+    "RouteTables": [
+        {
+            "Associations": [
+                {
+                    "Main": false,
+                    "RouteTableAssociationId": "rtbassoc-0acdf15eab39184db",
+                    "RouteTableId": "rtb-0a32638a5de398eff",
+                    "SubnetId": "subnet-0a3481631a9fc96e2",
+                    "AssociationState": {
+                        "State": "associated"
+                    }
+                }
+            ],
+            "PropagatingVgws": [],
+            "RouteTableId": "rtb-0a32638a5de398eff",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "10.20.0.0/16",
+                    "GatewayId": "local",
+                    "Origin": "CreateRouteTable",
+                    "State": "active"
+                },
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "NatGatewayId": "nat-073de5d0adf67a603",
+                    "Origin": "CreateRoute",
+                    "State": "active"
+                }
+            ],
+            "Tags": [
+                {
+                    "Key": "Environment",
+                    "Value": "challenge"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "uzobola"
+                },
+                {
+                    "Key": "Tier",
+                    "Value": "private"
+                },
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                },
+                {
+                    "Key": "Name",
+                    "Value": "ecs-fargate-cicd-private-rt-us-east-1a"
+                },
+                {
+                    "Key": "Project",
+                    "Value": "ecs-fargate-cicd"
+                }
+            ],
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "OwnerId": "421438965568"
+        },
+        {
+            "Associations": [
+                {
+                    "Main": false,
+                    "RouteTableAssociationId": "rtbassoc-067fd5c3221c8fb05",
+                    "RouteTableId": "rtb-0760ad21604d65260",
+                    "SubnetId": "subnet-09a9769be6405d1ac",
+                    "AssociationState": {
+                        "State": "associated"
+                    }
+                }
+            ],
+            "PropagatingVgws": [],
+            "RouteTableId": "rtb-0760ad21604d65260",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "10.20.0.0/16",
+                    "GatewayId": "local",
+                    "Origin": "CreateRouteTable",
+                    "State": "active"
+                },
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "NatGatewayId": "nat-01d7eac74d087d278",
+                    "Origin": "CreateRoute",
+                    "State": "active"
+                }
+            ],
+            "Tags": [
+                {
+                    "Key": "Name",
+                    "Value": "ecs-fargate-cicd-private-rt-us-east-1b"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "uzobola"
+                },
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                },
+                {
+                    "Key": "Tier",
+                    "Value": "private"
+                },
+                {
+                    "Key": "Project",
+                    "Value": "ecs-fargate-cicd"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "challenge"
+                }
+            ],
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "OwnerId": "421438965568"
+        },
+        {
+            "Associations": [
+                {
+                    "Main": true,
+                    "RouteTableAssociationId": "rtbassoc-052fc55a9d8d5d2bb",
+                    "RouteTableId": "rtb-0ec05178a7746e6c0",
+                    "AssociationState": {
+                        "State": "associated"
+                    }
+                }
+            ],
+            "PropagatingVgws": [],
+            "RouteTableId": "rtb-0ec05178a7746e6c0",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "10.20.0.0/16",
+                    "GatewayId": "local",
+                    "Origin": "CreateRouteTable",
+                    "State": "active"
+                }
+            ],
+            "Tags": [],
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "OwnerId": "421438965568"
+        },
+        {
+            "Associations": [
+                {
+                    "Main": false,
+                    "RouteTableAssociationId": "rtbassoc-0bd9e89b6a2ec6378",
+                    "RouteTableId": "rtb-0445e329857482a9b",
+                    "SubnetId": "subnet-09cb22e4ad8e11a97",
+                    "AssociationState": {
+                        "State": "associated"
+                    }
+                },
+                {
+                    "Main": false,
+                    "RouteTableAssociationId": "rtbassoc-0db50a1b78083e6cc",
+                    "RouteTableId": "rtb-0445e329857482a9b",
+                    "SubnetId": "subnet-0dd37330b4270f20f",
+                    "AssociationState": {
+                        "State": "associated"
+                    }
+                }
+            ],
+            "PropagatingVgws": [],
+            "RouteTableId": "rtb-0445e329857482a9b",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "10.20.0.0/16",
+                    "GatewayId": "local",
+                    "Origin": "CreateRouteTable",
+                    "State": "active"
+                },
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "GatewayId": "igw-0eaf26d090530b92a",
+                    "Origin": "CreateRoute",
+                    "State": "active"
+                }
+            ],
+            "Tags": [
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                },
+                {
+                    "Key": "Project",
+                    "Value": "ecs-fargate-cicd"
+                },
+                {
+                    "Key": "Owner",
+                    "Value": "uzobola"
+                },
+                {
+                    "Key": "Name",
+                    "Value": "ecs-fargate-cicd-public-rt"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "challenge"
+                },
+                {
+                    "Key": "Tier",
+                    "Value": "public"
+                }
+            ],
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "OwnerId": "421438965568"
+        }
+    ]
+}
+
+Terraform idempotency:
+data.aws_availability_zones.available: Reading...
+data.aws_caller_identity.current: Reading...
+data.aws_region.current: Reading...
+aws_vpc.main: Refreshing state... [id=vpc-006f2bd7548a8e590]
+aws_ecr_registry_scanning_configuration.project: Refreshing state... [id=421438965568]
+aws_ecr_repository.frontend: Refreshing state... [id=ecs-fargate-cicd-frontend]
+aws_ecr_repository.backend: Refreshing state... [id=ecs-fargate-cicd-backend]
+data.aws_region.current: Read complete after 0s [id=us-east-1]
+data.aws_caller_identity.current: Read complete after 0s [id=421438965568]
+data.aws_availability_zones.available: Read complete after 0s [id=us-east-1]
+aws_security_group.frontend: Refreshing state... [id=sg-0e9689bf9cfe78d22]
+aws_subnet.public["us-east-1a"]: Refreshing state... [id=subnet-09cb22e4ad8e11a97]
+aws_internet_gateway.main: Refreshing state... [id=igw-0eaf26d090530b92a]
+aws_subnet.private["us-east-1a"]: Refreshing state... [id=subnet-0a3481631a9fc96e2]
+aws_subnet.public["us-east-1b"]: Refreshing state... [id=subnet-0dd37330b4270f20f]
+aws_lb_target_group.frontend: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-frontend-tg/793421f1784744a7]
+aws_security_group.backend: Refreshing state... [id=sg-09728141a392789d5]
+aws_lb_target_group.backend: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-backend-tg/f71f617c3ee5eea9]
+aws_route_table.public: Refreshing state... [id=rtb-0445e329857482a9b]
+aws_security_group.alb: Refreshing state... [id=sg-061f2f8ea26cf2d7d]
+aws_subnet.private["us-east-1b"]: Refreshing state... [id=subnet-09a9769be6405d1ac]
+aws_vpc_security_group_egress_rule.frontend_https: Refreshing state... [id=sgr-0ca260c2e02fa3cff]
+aws_vpc_security_group_egress_rule.backend_https: Refreshing state... [id=sgr-064be55bcd2044353]
+aws_route.public_internet: Refreshing state... [id=r-rtb-0445e329857482a9b1080289494]
+aws_vpc_security_group_egress_rule.alb_to_backend: Refreshing state... [id=sgr-03c574b5f17289e5d]
+aws_vpc_security_group_ingress_rule.backend_from_alb: Refreshing state... [id=sgr-0d5ea8d3b1aff87ff]
+aws_vpc_security_group_egress_rule.alb_to_frontend: Refreshing state... [id=sgr-0d6f5d36cd0761ad5]
+aws_vpc_security_group_ingress_rule.frontend_from_alb: Refreshing state... [id=sgr-0358e1c0d56009a4e]
+aws_vpc_security_group_ingress_rule.alb_http: Refreshing state... [id=sgr-0f0e8d0888bbac325]
+aws_route_table.private["us-east-1b"]: Refreshing state... [id=rtb-0760ad21604d65260]
+aws_route_table.private["us-east-1a"]: Refreshing state... [id=rtb-0a32638a5de398eff]
+aws_route_table_association.public["us-east-1b"]: Refreshing state... [id=rtbassoc-0db50a1b78083e6cc]
+aws_lb.application: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:loadbalancer/app/ecs-fargate-cicd-alb/058dce635a2ab3b1]
+aws_route_table_association.public["us-east-1a"]: Refreshing state... [id=rtbassoc-0bd9e89b6a2ec6378]
+aws_eip.nat["us-east-1b"]: Refreshing state... [id=eipalloc-03ac561ed0dbd6657]
+aws_eip.nat["us-east-1a"]: Refreshing state... [id=eipalloc-03b46c8d021f78676]
+aws_route_table_association.private["us-east-1a"]: Refreshing state... [id=rtbassoc-0acdf15eab39184db]
+aws_route_table_association.private["us-east-1b"]: Refreshing state... [id=rtbassoc-067fd5c3221c8fb05]
+aws_lb_listener.http: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:listener/app/ecs-fargate-cicd-alb/058dce635a2ab3b1/f0e86b98ea8dae35]
+aws_nat_gateway.main["us-east-1b"]: Refreshing state... [id=nat-01d7eac74d087d278]
+aws_nat_gateway.main["us-east-1a"]: Refreshing state... [id=nat-073de5d0adf67a603]
+aws_route.private_nat["us-east-1a"]: Refreshing state... [id=r-rtb-0a32638a5de398eff1080289494]
+aws_route.private_nat["us-east-1b"]: Refreshing state... [id=r-rtb-0760ad21604d652601080289494]
+aws_lb_listener_rule.backend_api: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:listener-rule/app/ecs-fargate-cicd-alb/058dce635a2ab3b1/f0e86b98ea8dae35/4e541f83b2f63d6a]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

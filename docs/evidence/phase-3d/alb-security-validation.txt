@@ -1,0 +1,161 @@
+Phase 3D: Security and ALB validation
+UTC timestamp: Sat, Aug  8, 2026  1:20:23 AM
+
+Security groups:
+{"alb":"sg-061f2f8ea26cf2d7d","backend":"sg-09728141a392789d5","frontend":"sg-0e9689bf9cfe78d22"}
+
+Load balancer:
+{
+    "LoadBalancers": [
+        {
+            "LoadBalancerArn": "arn:aws:elasticloadbalancing:us-east-1:421438965568:loadbalancer/app/ecs-fargate-cicd-alb/058dce635a2ab3b1",
+            "DNSName": "ecs-fargate-cicd-alb-4797743.us-east-1.elb.amazonaws.com",
+            "CanonicalHostedZoneId": "Z35SXDOTRQ7X7K",
+            "CreatedTime": "2026-08-08T00:49:27.951000+00:00",
+            "LoadBalancerName": "ecs-fargate-cicd-alb",
+            "Scheme": "internet-facing",
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "State": {
+                "Code": "active"
+            },
+            "Type": "application",
+            "AvailabilityZones": [
+                {
+                    "ZoneName": "us-east-1a",
+                    "SubnetId": "subnet-09cb22e4ad8e11a97",
+                    "LoadBalancerAddresses": []
+                },
+                {
+                    "ZoneName": "us-east-1b",
+                    "SubnetId": "subnet-0dd37330b4270f20f",
+                    "LoadBalancerAddresses": []
+                }
+            ],
+            "SecurityGroups": [
+                "sg-061f2f8ea26cf2d7d"
+            ],
+            "IpAddressType": "ipv4",
+            "EnablePrefixForIpv6SourceNat": "off"
+        }
+    ]
+}
+
+Target groups:
+{
+    "TargetGroups": [
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-backend-tg/f71f617c3ee5eea9",
+            "TargetGroupName": "ecs-fargate-cicd-backend-tg",
+            "Protocol": "HTTP",
+            "Port": 8080,
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 2,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/health",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [
+                "arn:aws:elasticloadbalancing:us-east-1:421438965568:loadbalancer/app/ecs-fargate-cicd-alb/058dce635a2ab3b1"
+            ],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        },
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-frontend-tg/793421f1784744a7",
+            "TargetGroupName": "ecs-fargate-cicd-frontend-tg",
+            "Protocol": "HTTP",
+            "Port": 3000,
+            "VpcId": "vpc-006f2bd7548a8e590",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 2,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/",
+            "Matcher": {
+                "HttpCode": "200-399"
+            },
+            "LoadBalancerArns": [
+                "arn:aws:elasticloadbalancing:us-east-1:421438965568:loadbalancer/app/ecs-fargate-cicd-alb/058dce635a2ab3b1"
+            ],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        }
+    ]
+}
+
+Public ALB test:
+HTTP/1.1 503 Service Temporarily Unavailable
+Server: awselb/2.0
+Date: Sat, 08 Aug 2026 01:20:30 GMT
+Content-Type: text/html
+Content-Length: 162
+Connection: keep-alive
+
+<html>
+<head><title>503 Service Temporarily Unavailable</title></head>
+<body>
+<center><h1>503 Service Temporarily Unavailable</h1></center>
+</body>
+</html>
+
+Terraform idempotency:
+data.aws_caller_identity.current: Reading...
+data.aws_region.current: Reading...
+data.aws_availability_zones.available: Reading...
+aws_vpc.main: Refreshing state... [id=vpc-006f2bd7548a8e590]
+aws_ecr_registry_scanning_configuration.project: Refreshing state... [id=421438965568]
+data.aws_region.current: Read complete after 0s [id=us-east-1]
+aws_ecr_repository.backend: Refreshing state... [id=ecs-fargate-cicd-backend]
+aws_ecr_repository.frontend: Refreshing state... [id=ecs-fargate-cicd-frontend]
+data.aws_caller_identity.current: Read complete after 0s [id=421438965568]
+data.aws_availability_zones.available: Read complete after 1s [id=us-east-1]
+aws_internet_gateway.main: Refreshing state... [id=igw-0eaf26d090530b92a]
+aws_security_group.backend: Refreshing state... [id=sg-09728141a392789d5]
+aws_security_group.frontend: Refreshing state... [id=sg-0e9689bf9cfe78d22]
+aws_security_group.alb: Refreshing state... [id=sg-061f2f8ea26cf2d7d]
+aws_route_table.public: Refreshing state... [id=rtb-0445e329857482a9b]
+aws_subnet.public["us-east-1a"]: Refreshing state... [id=subnet-09cb22e4ad8e11a97]
+aws_subnet.private["us-east-1b"]: Refreshing state... [id=subnet-09a9769be6405d1ac]
+aws_subnet.public["us-east-1b"]: Refreshing state... [id=subnet-0dd37330b4270f20f]
+aws_lb_target_group.frontend: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-frontend-tg/793421f1784744a7]
+aws_lb_target_group.backend: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:targetgroup/ecs-fargate-cicd-backend-tg/f71f617c3ee5eea9]
+aws_subnet.private["us-east-1a"]: Refreshing state... [id=subnet-0a3481631a9fc96e2]
+aws_vpc_security_group_egress_rule.frontend_https: Refreshing state... [id=sgr-0ca260c2e02fa3cff]
+aws_vpc_security_group_egress_rule.alb_to_frontend: Refreshing state... [id=sgr-0d6f5d36cd0761ad5]
+aws_vpc_security_group_ingress_rule.frontend_from_alb: Refreshing state... [id=sgr-0358e1c0d56009a4e]
+aws_vpc_security_group_ingress_rule.alb_http: Refreshing state... [id=sgr-0f0e8d0888bbac325]
+aws_vpc_security_group_egress_rule.backend_https: Refreshing state... [id=sgr-064be55bcd2044353]
+aws_vpc_security_group_egress_rule.alb_to_backend: Refreshing state... [id=sgr-03c574b5f17289e5d]
+aws_vpc_security_group_ingress_rule.backend_from_alb: Refreshing state... [id=sgr-0d5ea8d3b1aff87ff]
+aws_route.public_internet: Refreshing state... [id=r-rtb-0445e329857482a9b1080289494]
+aws_route_table.private["us-east-1b"]: Refreshing state... [id=rtb-0760ad21604d65260]
+aws_route_table.private["us-east-1a"]: Refreshing state... [id=rtb-0a32638a5de398eff]
+aws_route_table_association.public["us-east-1b"]: Refreshing state... [id=rtbassoc-0db50a1b78083e6cc]
+aws_lb.application: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:loadbalancer/app/ecs-fargate-cicd-alb/058dce635a2ab3b1]
+aws_route_table_association.public["us-east-1a"]: Refreshing state... [id=rtbassoc-0bd9e89b6a2ec6378]
+aws_eip.nat["us-east-1a"]: Refreshing state... [id=eipalloc-03b46c8d021f78676]
+aws_eip.nat["us-east-1b"]: Refreshing state... [id=eipalloc-03ac561ed0dbd6657]
+aws_route_table_association.private["us-east-1a"]: Refreshing state... [id=rtbassoc-0acdf15eab39184db]
+aws_route_table_association.private["us-east-1b"]: Refreshing state... [id=rtbassoc-067fd5c3221c8fb05]
+aws_nat_gateway.main["us-east-1a"]: Refreshing state... [id=nat-073de5d0adf67a603]
+aws_nat_gateway.main["us-east-1b"]: Refreshing state... [id=nat-01d7eac74d087d278]
+aws_lb_listener.http: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:listener/app/ecs-fargate-cicd-alb/058dce635a2ab3b1/f0e86b98ea8dae35]
+aws_route.private_nat["us-east-1b"]: Refreshing state... [id=r-rtb-0760ad21604d652601080289494]
+aws_route.private_nat["us-east-1a"]: Refreshing state... [id=r-rtb-0a32638a5de398eff1080289494]
+aws_lb_listener_rule.backend_api: Refreshing state... [id=arn:aws:elasticloadbalancing:us-east-1:421438965568:listener-rule/app/ecs-fargate-cicd-alb/058dce635a2ab3b1/f0e86b98ea8dae35/4e541f83b2f63d6a]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.
