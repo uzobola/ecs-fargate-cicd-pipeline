@@ -68,8 +68,13 @@ data "aws_iam_policy_document" "github_actions_assume" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
 
+      # GitHub repositories created on or after July 15, 2026 use immutable
+      # OIDC subjects containing the permanent owner and repository IDs.
+      #
+      # This prevents repository-name reuse or ownership changes from satisfying
+      # a trust policy that was intended for this specific repository.
       values = [
-        "repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"
+        "repo:uzobola@${var.github_owner_id}/ecs-fargate-cicd-pipeline@${var.github_repository_id}:ref:refs/heads/${var.github_branch}"
       ]
     }
   }

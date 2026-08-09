@@ -21,3 +21,15 @@ variable "project_name" {
   type        = string
   default     = "ecs-fargate-cicd"
 }
+
+variable "github_owner_id" {
+  description = "Immutable numeric GitHub owner ID used in OIDC subject claims."
+  type        = string
+  default     = "173111719"
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used in OIDC subject claims."
+  type        = string
+  default     = "1323400235"
+}
