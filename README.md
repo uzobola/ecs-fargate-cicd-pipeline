@@ -1080,3 +1080,120 @@ Evidence:
 docs/evidence/screenshots/scaling/
 ```
 
+# Bonus: GitHub Actions GitOps Alternative
+
+A separate `gitops` branch implements an alternative CI/CD path using GitHub
+Actions instead of Jenkins.
+
+The required Jenkins implementation remains on `main`.
+
+## Architecture
+
+```text
+Push to gitops
+      |
+      v
+GitHub Actions
+      |
+      | OIDC
+      v
+AWS STS
+      |
+      v
+ecs-fargate-cicd-github-actions-deploy-role
+      |
+      +--> Build frontend/backend images
+      |
+      +--> Push immutable images to ECR
+      |
+      +--> Render new ECS task definitions
+      |
+      +--> Deploy frontend/backend ECS services
+      |
+      +--> Wait for service stability
+      |
+      +--> Validate the live application
+```
+
+## Authentication
+
+The workflow does not store AWS access keys in GitHub.
+
+GitHub Actions requests an OIDC token and assumes:
+
+```text
+ecs-fargate-cicd-github-actions-deploy-role
+```
+
+through AWS STS.
+
+The trust relationship is restricted to the immutable identity of this
+repository and the `gitops` branch.
+
+The account-level GitHub OIDC provider already existed and is reused rather than
+duplicated.
+
+The GitOps IAM layer is managed separately under:
+
+```text
+terraform/gitops-iam/
+```
+
+with its own remote state:
+
+```text
+gitops/terraform.tfstate
+```
+
+## GitHub Actions workflow
+
+The workflow is stored at:
+
+```text
+.github/workflows/deploy.yml
+```
+
+It performs:
+
+```text
+Checkout
+Configure AWS credentials through OIDC
+Verify AWS identity
+Authenticate to ECR
+Generate immutable image tag
+Build frontend image
+Build backend image
+Push images to ECR
+Download current ECS task definitions
+Render new task definitions
+Deploy frontend service
+Deploy backend service
+Wait for service stability
+Validate the live application
+```
+
+Image tags use:
+
+```text
+<12-character-git-commit>-<github-run-number>
+```
+
+## Validation
+
+The successful workflow confirmed:
+
+```text
+Frontend returned HTTP 200.
+Backend returned a GUID.
+GitOps deployment validation passed.
+```
+
+Evidence is stored under:
+
+```text
+docs/evidence/screenshots/gitops/
+```
+
+This branch demonstrates GitHub Actions as an alternative deployment engine
+while preserving the Jenkins implementation required by the challenge on
+`main`.
