@@ -72,7 +72,7 @@ when frontend-to-backend communication is working.
 - [x] Live post-deployment validation
 - [x] GitHub webhook-triggered Jenkins builds
 - [x] Auto Scaling load-test evidence
-- [ ] GitHub Actions GitOps bonus
+- [x] GitHub Actions GitOps bonus
 
 ---
 
@@ -914,38 +914,60 @@ challenge instructions.
 
 # Bonus: GitHub Actions GitOps Alternative
 
-The GitHub Actions alternative is intentionally separate from the required
-Jenkins implementation.
+# Bonus: GitHub Actions GitOps Alternative
 
-Planned branch:
+A complete GitHub Actions CI/CD alternative is implemented on the `gitops`
+branch.
 
-```text
-gitops
-```
-
-The bonus implementation will replace Jenkins as the CI/CD engine for that
-branch and use:
+The required Jenkins implementation remains on `main`, while the `gitops`
+branch demonstrates an alternative deployment path:
 
 ```text
-GitHub push
-     |
-     v
+GitHub push to gitops
+        |
+        v
 GitHub Actions
-     |
-     v
-AWS authentication
-     |
-     v
-build frontend/backend
-     |
-     v
-push images to ECR
-     |
-     v
-register/update ECS deployment
+        |
+        | OIDC
+        v
+AWS STS
+        |
+        v
+GitHub Actions deployment role
+        |
+        +--> Build frontend/backend images
+        |
+        +--> Push immutable images to ECR
+        |
+        +--> Register new ECS task-definition revisions
+        |
+        +--> Deploy frontend/backend services
+        |
+        +--> Wait for ECS stability
+        |
+        +--> Validate the live application
 ```
 
-This bonus is not required for the main Jenkins solution.
+AWS authentication uses GitHub OIDC and temporary STS credentials rather than
+long-lived AWS access keys.
+
+The IAM trust relationship is restricted to the immutable identity of this
+repository and the `gitops` branch.
+
+The GitOps IAM configuration is managed separately under:
+
+```text
+terraform/gitops-iam/
+```
+
+The complete workflow, implementation details, and validation evidence are
+available on the `gitops` branch.
+
+---
+
+# Auto Scaling Validation
+
+Both ECS services use target-tracking Application Auto Scaling based on:
 
 # Auto Scaling Validation
 
