@@ -1,0 +1,207 @@
+name: GitOps ECS Deployment
+
+on:
+  push:
+    branches:
+      - gitops
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+
+  ECS_CLUSTER: ecs-fargate-cicd-cluster
+
+  FRONTEND_SERVICE: ecs-fargate-cicd-frontend
+  BACKEND_SERVICE: ecs-fargate-cicd-backend
+
+  FRONTEND_TASK_FAMILY: ecs-fargate-cicd-frontend
+  BACKEND_TASK_FAMILY: ecs-fargate-cicd-backend
+
+  FRONTEND_REPOSITORY: ecs-fargate-cicd-frontend
+  BACKEND_REPOSITORY: ecs-fargate-cicd-backend
+
+  ALB_NAME: ecs-fargate-cicd-alb
+
+jobs:
+  deploy:
+    name: Build and deploy to ECS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # OIDC gives the workflow temporary AWS credentials.
+      # No long-lived AWS access keys are stored in GitHub.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::421438965568:role/ecs-fargate-cicd-github-actions-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate immutable image tag
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA::12}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            --pull \
+            -t frontend:${IMAGE_TAG} \
+            ./frontend
+
+      - name: Build backend image
+        run: |
+          docker build \
+            --pull \
+            -t backend:${IMAGE_TAG} \
+            ./backend
+
+      - name: Push immutable images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          FRONTEND_IMAGE="${ECR_REGISTRY}/${FRONTEND_REPOSITORY}:${IMAGE_TAG}"
+          BACKEND_IMAGE="${ECR_REGISTRY}/${BACKEND_REPOSITORY}:${IMAGE_TAG}"
+
+          docker tag \
+            frontend:${IMAGE_TAG} \
+            "${FRONTEND_IMAGE}"
+
+          docker tag \
+            backend:${IMAGE_TAG} \
+            "${BACKEND_IMAGE}"
+
+          docker push "${FRONTEND_IMAGE}"
+          docker push "${BACKEND_IMAGE}"
+
+          echo "FRONTEND_IMAGE=${FRONTEND_IMAGE}" >> "$GITHUB_ENV"
+          echo "BACKEND_IMAGE=${BACKEND_IMAGE}" >> "$GITHUB_ENV"
+
+      # Read the currently deployed task definitions so the workflow changes
+      # only the application image URI rather than duplicating Terraform's task
+      # definition configuration.
+      - name: Download frontend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${FRONTEND_TASK_FAMILY}" \
+            --query taskDefinition \
+          | jq '
+              del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+            ' \
+          > frontend-task-definition.json
+
+      - name: Download backend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${BACKEND_TASK_FAMILY}" \
+            --query taskDefinition \
+          | jq '
+              del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+            ' \
+          > backend-task-definition.json
+
+      - name: Render frontend task definition
+        id: render-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: frontend-task-definition.json
+          container-name: frontend
+          image: ${{ env.FRONTEND_IMAGE }}
+
+      - name: Render backend task definition
+        id: render-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: backend-task-definition.json
+          container-name: backend
+          image: ${{ env.BACKEND_IMAGE }}
+
+      - name: Deploy frontend service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-frontend.outputs.task-definition }}
+          service: ${{ env.FRONTEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-max-delay-seconds: 15
+
+      - name: Deploy backend service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-backend.outputs.task-definition }}
+          service: ${{ env.BACKEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-max-delay-seconds: 15
+
+      - name: Validate live application
+        run: |
+          set -eu
+
+          ALB_DNS=$(
+            aws elbv2 describe-load-balancers \
+              --names "${ALB_NAME}" \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text
+          )
+
+          echo "Validating http://${ALB_DNS}"
+
+          FRONTEND_STATUS=$(
+            curl \
+              --silent \
+              --show-error \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              "http://${ALB_DNS}/"
+          )
+
+          test "${FRONTEND_STATUS}" = "200"
+
+          API_RESPONSE=$(
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              "http://${ALB_DNS}/api"
+          )
+
+          echo "${API_RESPONSE}"
+
+          echo "${API_RESPONSE}" \
+          | jq -e '
+              .id
+              | type == "string"
+              and length > 0
+            '
+
+          echo "Frontend returned HTTP 200."
+          echo "Backend returned a GUID."
+          echo "GitOps deployment validation passed."
