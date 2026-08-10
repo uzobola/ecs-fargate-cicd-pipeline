@@ -1,13 +1,22 @@
-# Phase 3E: ECS Fargate Services and Application Auto Scaling
+# Phase 3C: ECS Fargate Services and Application Auto Scaling
 
 ## Purpose
 
 This phase deploys the frontend and backend application workloads to Amazon ECS
 using AWS Fargate.
 
-It connects the container artifacts created in Phase 3B to the networking,
-security groups, target groups, and Application Load Balancer created in Phases
-3C and 3D.
+It connects the previously published application container artifacts to the
+networking, security groups, target groups, and Application Load Balancer
+created in Phase 3B.
+
+The phase is divided into four parts:
+
+```text
+Part 1 - ECS Runtime Foundation and Execution Identities
+Part 2 - Fargate Services and Runtime Ownership
+Part 3 - Application Auto Scaling
+Part 4 - Deployment and Runtime Validation
+```
 
 The completed application path becomes:
 
@@ -28,14 +37,16 @@ Application Load Balancer
                       Backend Fargate service
 ```
 
-Both services run in private subnets without public IPv4 addresses.
+Both services run in private subnets with public IP assignment disabled.
 
 Application Auto Scaling manages runtime capacity between one and four tasks per
 service using average ECS service CPU utilization.
 
 ---
 
-## 3E.1 Scope
+## Part 1: ECS Runtime Foundation and Execution Identities
+
+### 3C.1 Scope
 
 This phase creates the ECS application runtime:
 
@@ -82,7 +93,7 @@ CPU target:        50%
 
 ---
 
-## 3E.2 Create the ECS cluster
+### 3C.2 Create the ECS cluster
 
 Terraform creates:
 
@@ -104,7 +115,7 @@ No EC2 container hosts are provisioned for the application.
 
 ---
 
-## 3E.3 Create separate CloudWatch log groups
+### 3C.3 Create separate CloudWatch log groups
 
 Frontend and backend logs use independent CloudWatch log groups:
 
@@ -124,7 +135,7 @@ for the two services.
 
 ---
 
-## 3E.4 Create ECS task execution identities
+### 3C.4 Create ECS task execution identities
 
 Frontend and backend use separate ECS task execution IAM roles.
 
@@ -168,7 +179,7 @@ but image-pull permissions are repository-scoped.
 
 ---
 
-## 3E.5 Do not create an application task role
+### 3C.5 Do not create an application task role
 
 No application task role is assigned.
 
@@ -195,7 +206,7 @@ This avoids granting AWS API permissions that the application does not require.
 
 ---
 
-## 3E.6 Create the frontend task definition
+### 3C.6 Create the frontend task definition
 
 The frontend task definition uses:
 
@@ -216,8 +227,8 @@ The baseline image is:
 <frontend-ecr-repository>:<app_image_tag>
 ```
 
-The initial image tag comes from the immutable application-source tag published
-during Phase 3B.
+The initial image tag comes from the immutable application-source artifact
+published to Amazon ECR before this runtime phase.
 
 Container logs use:
 
@@ -229,7 +240,7 @@ with the frontend CloudWatch log group.
 
 ---
 
-## 3E.7 Create the backend task definition
+### 3C.7 Create the backend task definition
 
 The backend task definition uses:
 
@@ -256,7 +267,9 @@ Container logs use the backend CloudWatch log group.
 
 ---
 
-## 3E.8 Create the frontend ECS service
+## Part 2: Fargate Services and Runtime Ownership
+
+### 3C.8 Create the frontend ECS service
 
 The frontend service starts with:
 
@@ -304,7 +317,7 @@ TCP/3000
 
 ---
 
-## 3E.9 Create the backend ECS service
+### 3C.9 Create the backend ECS service
 
 The backend follows the same Fargate deployment model.
 
@@ -333,7 +346,7 @@ routing contract exists before the workload is deployed.
 
 ---
 
-## 3E.10 Define deployment ownership
+### 3C.10 Define deployment ownership
 
 Two runtime fields intentionally have owners other than Terraform:
 
@@ -369,7 +382,7 @@ Application Auto Scaling
     |
     +--> runtime desired_count
 
-Jenkins / CI/CD
+CI/CD
     |
     +--> new image versions
     +--> new task-definition revisions
@@ -381,7 +394,9 @@ attempt to revert a valid scaling event or CI/CD deployment.
 
 ---
 
-## 3E.11 Configure Application Auto Scaling
+## Part 3: Application Auto Scaling
+
+### 3C.11 Configure Application Auto Scaling
 
 Both ECS services receive scalable targets.
 
@@ -413,7 +428,7 @@ ecs
 
 ---
 
-## 3E.12 Configure CPU target tracking
+### 3C.12 Configure CPU target tracking
 
 Both services use:
 
@@ -437,12 +452,12 @@ Scale-in cooldown:
 Application Auto Scaling can therefore increase or decrease ECS desired
 capacity within the configured 1-4 task range.
 
-Phase 7 performs the controlled load test that proves this control loop changes
-runtime desired capacity.
+This phase verifies the scaling configuration. Phase 7 performs the controlled
+load test that proves the control loop changes runtime desired capacity.
 
 ---
 
-## 3E.13 Add ECS outputs
+### 3C.13 Add ECS outputs
 
 Terraform exposes:
 
@@ -456,11 +471,14 @@ cloudwatch_log_groups
 These outputs provide stable identifiers for validation and later CI/CD
 operations.
 
-Jenkins does not need to rediscover the infrastructure model manually.
+The CI/CD deployment layer can use these stable identifiers without
+redefining the infrastructure model.
 
 ---
 
-## 3E.14 Format and validate
+## Part 4: Deployment and Runtime Validation
+
+### 3C.14 Format and validate
 
 Run:
 
@@ -497,7 +515,7 @@ assumed-role/TerraformExecutionRole
 
 ---
 
-## 3E.15 Create and review the ECS plan
+### 3C.15 Create and review the ECS plan
 
 Create a saved plan:
 
@@ -543,7 +561,7 @@ Review the complete plan before applying.
 
 ---
 
-## 3E.16 Apply the ECS runtime
+### 3C.16 Apply the ECS runtime
 
 Apply the reviewed saved plan:
 
@@ -557,7 +575,7 @@ Fargate task startup and target-group health checks may take several minutes.
 
 ---
 
-## 3E.17 Verify the ECS cluster
+### 3C.17 Verify the ECS cluster
 
 Run:
 
@@ -583,7 +601,7 @@ Status  = ACTIVE
 
 ---
 
-## 3E.18 Verify both ECS services
+### 3C.18 Verify both ECS services
 
 Run:
 
@@ -624,7 +642,7 @@ assignPublicIp = DISABLED
 
 ---
 
-## 3E.19 Verify task-definition resources
+### 3C.19 Verify task-definition resources
 
 Inspect the frontend:
 
@@ -681,9 +699,9 @@ TaskRole      = null
 
 ---
 
-## 3E.20 Verify target health
+### 3C.20 Verify target health
 
-Retrieve the target-group ARNs using the outputs established in Phase 3D.
+Retrieve the target-group ARNs using the outputs established in Phase 3B.
 
 Check the frontend:
 
@@ -707,12 +725,12 @@ The registered application targets must report:
 healthy
 ```
 
-The target groups that were intentionally empty at the end of Phase 3D now
+The target groups that were intentionally empty at the end of Phase 3B now
 contain the ECS workloads.
 
 ---
 
-## 3E.21 Verify Application Auto Scaling
+### 3C.21 Verify Application Auto Scaling
 
 Inspect the scalable targets:
 
@@ -768,7 +786,7 @@ Metric = ECSServiceAverageCPUUtilization
 
 ---
 
-## 3E.22 Validate the deployed application
+### 3C.22 Validate the deployed application
 
 Retrieve the ALB hostname:
 
@@ -825,7 +843,7 @@ ALB
 
 ---
 
-## 3E.23 Verify Terraform ownership and idempotency
+### 3C.23 Verify Terraform ownership and idempotency
 
 Run:
 
@@ -846,9 +864,9 @@ intentionally owned by other control planes.
 
 ---
 
-## 3E.24 Phase acceptance criteria
+### 3C.24 Phase acceptance criteria
 
-Phase 3E passes when:
+Phase 3C passes when:
 
 - the ECS cluster is active
 - frontend and backend task definitions use Fargate
@@ -878,9 +896,9 @@ Phase 3E passes when:
 
 ---
 
-## Phase 3E result
+## Phase 3C Result
 
-Phase 3E completes the AWS application runtime:
+Phase 3C completes the AWS application runtime:
 
 ```text
 Immutable ECR images

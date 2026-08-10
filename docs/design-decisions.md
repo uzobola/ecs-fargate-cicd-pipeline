@@ -446,4 +446,19 @@ The application runtime and CI/CD control plane remain separate failure domains.
 - Docker-group privilege remains an explicitly documented challenge tradeoff.
 
 
-## ADR-007: Use Fargate services with separated execution identities and CI/CD ownership
+## ADR-007: Use Fargate services with separated execution identities and runtime ownership
+
+### Context
+
+The application contains separate frontend and backend containers that run on
+Amazon ECS Fargate.
+
+The challenge requires each service to use:
+
+```text
+512 CPU units
+1024 MiB memory
+minimum capacity 1
+desired capacity 1
+maximum capacity 4
+50% CPU target tracking

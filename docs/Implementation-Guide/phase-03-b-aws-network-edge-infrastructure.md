@@ -2,1882 +2,48 @@
 
 ## Purpose
 
-This phase creates the AWS network, routing, security, and public application
-entry infrastructure required by the later ECS Fargate application runtime.
+This phase creates the AWS network, routing, security boundaries, and public
+application-entry infrastructure required by the ECS Fargate runtime introduced
+in Phase 3C.
 
-It is divided into four parts:
+The phase is divided into four parts:
 
 ```text
-Part 1 - Multi-AZ VPC foundation
-Part 2 - Internet and private egress routing
-Part 3 - Network security boundaries
-Part 4 - Application Load Balancer and Layer-7 routing
-
-The final flow is:
-
-```text
-Application source
-        |
-        | Docker build
-        v
-Local container image
-        |
-        | source-derived Git SHA tag
-        v
-Amazon ECR
-        |
-        +-- frontend image
-        |
-        +-- backend image
-        |
-        v
-ECS task definitions
-```
-
-The ECR repositories are managed by Terraform.
-
-Docker image contents are not managed by Terraform.
-
----
-
-## 3B.1 Scope
-
-This phase creates:
-
-```text
-aws_ecr_repository.frontend
-aws_ecr_repository.backend
-aws_ecr_registry_scanning_configuration.project
-```
-
-This phase does not create:
-
-```text
-VPC
-subnets
-route tables
-NAT gateways
-load balancers
-ECS clusters
-ECS services
-Jenkins
-```
-
-Those components are introduced in later phases.
-
----
-
-## 3B.2 State separation
-
-The main infrastructure configuration uses the remote state bucket created in
-Phase 3A.
-
-Bootstrap state:
-
-```text
-bootstrap/terraform.tfstate
-```
-
-Main infrastructure state:
-
-```text
-infrastructure/terraform.tfstate
-```
-
-This separation prevents normal application infrastructure operations from
-modifying the state record that manages the Terraform backend itself.
-
-The main Terraform directory is:
-
-```text
-terraform/infrastructure/
-```
-
----
-
-## 3B.3 Create the infrastructure directory
-
-From Git Bash:
-
-```bash
-cd /c/Users/uzobo/projects/1-percent-university/tech-challenge-1
-
-mkdir -p terraform/infrastructure
-```
-
-Create:
-
-```text
-terraform/infrastructure/
-├── backend.tf
-├── versions.tf
-├── providers.tf
-├── variables.tf
-├── locals.tf
-├── ecr.tf
-└── outputs.tf
-```
-
-Terraform and AWS commands in this phase run from Git Bash through the
-`terraform` aws-vault profile.
-
-Docker build and local runtime validation continue from WSL against the same
-Windows checkout through:
-
-```text
-/mnt/c/Users/uzobo/projects/1-percent-university/tech-challenge-1
-```
-
----
-
-## 3B.4 Configure the main Terraform backend
-
-Create:
-
-```text
-terraform/infrastructure/backend.tf
-```
-
-Use:
-
-```hcl
-# Store the main infrastructure state in the S3 backend created during
-# Phase 3A.
-#
-# The bucket name is supplied during `terraform init` rather than stored here.
-# This keeps account-specific backend configuration separate from the reusable
-# Terraform source.
-#
-# aws-vault supplies temporary TerraformExecutionRole credentials through the
-# process environment. No AWS credentials are written into Terraform files.
-
-terraform {
-  backend "s3" {
-    # Main application infrastructure uses a different state object from the
-    # bootstrap configuration that manages the state bucket itself.
-    key = "infrastructure/terraform.tfstate"
-
-    region = "us-east-1"
-
-    # Request S3 server-side encryption for the state object.
-    encrypt = true
-
-    # Use S3-native locking so competing Terraform operations cannot safely
-    # write this state at the same time.
-    use_lockfile = true
-  }
-}
-```
-
-The state bucket name is supplied during initialization.
-
-No credentials are stored in this file.
-
----
-
-## 3B.5 Configure Terraform and provider versions
-
-Create:
-
-```text
-terraform/infrastructure/versions.tf
-```
-
-Use:
-
-```hcl
-# Keep Terraform and provider compatibility consistent with the validated
-# bootstrap configuration.
-terraform {
-  required_version = ">= 1.11.0, < 2.0.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-```
-
-The infrastructure directory receives its own:
-
-```text
-.terraform.lock.hcl
-```
-
-The lock file is committed to Git.
-
-The `.terraform/` directory is ignored.
-
----
-
-## 3B.6 Define infrastructure variables
-
-Create:
-
-```text
-terraform/infrastructure/variables.tf
-```
-
-Use:
-
-```hcl
-# Region for the application infrastructure.
-variable "aws_region" {
-  description = "AWS Region where application infrastructure is deployed."
-  type        = string
-  default     = "us-east-1"
-}
-
-# Stable project prefix used for names and tags.
-variable "project_name" {
-  description = "Project identifier used for AWS resource names and tags."
-  type        = string
-  default     = "ecs-fargate-cicd"
-}
-
-# Environment label used for resource inventory and filtering.
-variable "environment" {
-  description = "Deployment environment represented by this Terraform state."
-  type        = string
-  default     = "challenge"
-}
-
-# Human or team owner recorded in AWS tags.
-variable "owner" {
-  description = "Owner recorded on project resources."
-  type        = string
-  default     = "uzobola"
-}
-```
-
-Only values with a reasonable chance of varying between deployments are exposed
-as variables.
-
----
-
-## 3B.7 Define shared names and tags
-
-Create:
-
-```text
-terraform/infrastructure/locals.tf
-```
-
-Use:
-
-```hcl
-# Centralize names and shared tags so later networking, ECS, ALB, and Jenkins
-# resources use the same naming model.
-locals {
-  frontend_repository_name = "${var.project_name}-frontend"
-  backend_repository_name  = "${var.project_name}-backend"
-
-  common_tags = {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-    Owner       = var.owner
-  }
-}
-```
-
-Expected repository names:
-
-```text
-ecs-fargate-cicd-frontend
-ecs-fargate-cicd-backend
-```
-
----
-
-## 3B.8 Configure the AWS provider
-
-Create:
-
-```text
-terraform/infrastructure/providers.tf
-```
-
-Use:
-
-```hcl
-# All AWS resources in this state are created in the selected project Region.
-#
-# default_tags gives every supported AWS resource the same ownership and
-# inventory metadata without repeating the tag block in every resource.
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = local.common_tags
-  }
-}
-
-# Read the AWS identity used by Terraform.
-#
-# Later outputs and validation can use this value without hardcoding an account
-# number into reusable infrastructure code.
-data "aws_caller_identity" "current" {}
-
-# Read the active AWS Region from the provider session.
-data "aws_region" "current" {}
-```
-
-The account number is discovered from the authenticated Terraform execution
-session rather than hardcoded into the provider.
-
----
-
-## 3B.9 Inspect the existing ECR registry scanning configuration
-
-ECR registry scanning configuration applies at the AWS account and Region
-level.
-
-Before Terraform manages it, inspect the existing configuration:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr get-registry-scanning-configuration \
-  --region us-east-1
-```
-
-For this environment, the initial configuration returned:
-
-```json
-{
-  "registryId": "421438965568",
-  "scanningConfiguration": {
-    "scanType": "BASIC",
-    "rules": []
-  }
-}
-```
-
-No existing registry scanning rule was present.
-
-This made it acceptable for this Terraform state to manage a project-specific
-rule.
-
-An environment containing an existing organizational registry rule requires a
-review before Terraform takes ownership of this account-level setting.
-
-Do not overwrite an existing enterprise scanning policy without that review.
-
----
-
-## 3B.10 Configure ECR repositories and vulnerability scanning
-
-Create:
-
-```text
-terraform/infrastructure/ecr.tf
-```
-
-Use the final configuration:
-
-```hcl
-# Configure vulnerability scanning at the ECR registry level.
-#
-# Amazon ECR manages scan-on-push behavior through registry scanning rules.
-# Repositories that do not match a SCAN_ON_PUSH rule use manual scanning when
-# Basic scanning is selected.
-#
-# This rule is intentionally scoped to this project's repository prefix rather
-# than "*" so unrelated ECR repositories in the account are not pulled into
-# this project's scanning policy.
-#
-# This resource manages the registry scanning configuration for us-east-1.
-# The registry was verified to have BASIC scanning with no existing rules
-# before Terraform took ownership of this setting.
-resource "aws_ecr_registry_scanning_configuration" "project" {
-  scan_type = "BASIC"
-
-  rule {
-    scan_frequency = "SCAN_ON_PUSH"
-
-    repository_filter {
-      filter      = "${var.project_name}-*"
-      filter_type = "WILDCARD"
-    }
-  }
-}
-
-# Private repository for the compiled frontend container image.
-#
-# Image tags are immutable so a Git-source tag cannot later be overwritten with
-# different image content.
-#
-# Vulnerability scan frequency is controlled by the registry-level scanning
-# configuration above.
-#
-# force_delete = false prevents Terraform from automatically deleting a
-# repository that still contains image artifacts.
-resource "aws_ecr_repository" "frontend" {
-  name                 = local.frontend_repository_name
-  image_tag_mutability = "IMMUTABLE"
-  force_delete         = false
-
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
-}
-
-# Private repository for the Express backend container image.
-#
-# The repository follows the same immutability, encryption, deletion, and
-# registry-level vulnerability-scanning policy as the frontend repository.
-resource "aws_ecr_repository" "backend" {
-  name                 = local.backend_repository_name
-  image_tag_mutability = "IMMUTABLE"
-  force_delete         = false
-
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
-}
-```
-
-The final repository controls are:
-
-```text
-Private ECR repository
-Immutable tags
-AES256 encryption
-force_delete = false
-Registry-level BASIC SCAN_ON_PUSH rule
-```
-
-The scanning rule is scoped to:
-
-```text
-ecs-fargate-cicd-*
-```
-
-It does not intentionally select unrelated ECR repositories.
-
----
-
-## 3B.11 Define Terraform outputs
-
-Create:
-
-```text
-terraform/infrastructure/outputs.tf
-```
-
-Use:
-
-```hcl
-# Repository names are useful for AWS CLI and CI/CD commands.
-output "frontend_ecr_repository_name" {
-  description = "Name of the frontend ECR repository."
-  value       = aws_ecr_repository.frontend.name
-}
-
-output "backend_ecr_repository_name" {
-  description = "Name of the backend ECR repository."
-  value       = aws_ecr_repository.backend.name
-}
-
-# Repository URLs are the registry destinations used when tagging Docker images
-# before pushing them to ECR.
-output "frontend_ecr_repository_url" {
-  description = "ECR URI used to push and pull the frontend image."
-  value       = aws_ecr_repository.frontend.repository_url
-}
-
-output "backend_ecr_repository_url" {
-  description = "ECR URI used to push and pull the backend image."
-  value       = aws_ecr_repository.backend.repository_url
-}
-
-# Record the account and Region discovered from the authenticated provider
-# session. These outputs are useful deployment evidence and troubleshooting
-# context.
-output "deployment_context" {
-  description = "AWS account and Region used by this Terraform state."
-
-  value = {
-    account_id = data.aws_caller_identity.current.account_id
-    region     = data.aws_region.current.region
-  }
-}
-```
-
----
-
-## 3B.12 Format the configuration
-
-From Git Bash:
-
-```bash
-terraform -chdir=terraform/infrastructure fmt -recursive
-```
-
-Check for formatting problems:
-
-```bash
-git diff --check
-```
-
-List the files:
-
-```bash
-find terraform/infrastructure \
-  -maxdepth 1 \
-  -type f \
-  -print
-```
-
-Expected source files:
-
-```text
-terraform/infrastructure/backend.tf
-terraform/infrastructure/ecr.tf
-terraform/infrastructure/locals.tf
-terraform/infrastructure/outputs.tf
-terraform/infrastructure/providers.tf
-terraform/infrastructure/variables.tf
-terraform/infrastructure/versions.tf
-```
-
----
-
-## 3B.13 Verify the Terraform execution identity
-
-Before initialization or provisioning:
-
-```bash
-aws-vault exec terraform -- \
-  aws sts get-caller-identity
-```
-
-The ARN must contain:
-
-```text
-assumed-role/TerraformExecutionRole
-```
-
-It must not show the source IAM user ARN.
-
----
-
-## 3B.14 Initialize the main remote backend
-
-Set the state bucket:
-
-```bash
-BUCKET="ecs-fargate-cicd-tfstate-421438965568-us-east-1"
-```
-
-Initialize:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure init \
-  -backend-config="bucket=$BUCKET"
-```
-
-No `-migrate-state` option is required.
-
-This configuration begins directly with remote state and has no earlier local
-state to transfer.
-
-Expected ending:
-
-```text
-Successfully configured the backend "s3"!
-
-Terraform has been successfully initialized!
-```
-
-Initialization creates:
-
-```text
-terraform/infrastructure/.terraform/
-terraform/infrastructure/.terraform.lock.hcl
-```
-
----
-
-## 3B.15 Validate the Terraform configuration
-
-Run:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure validate
-```
-
-Expected:
-
-```text
-Success! The configuration is valid.
-```
-
----
-
-## 3B.16 Create a saved Terraform plan
-
-Run:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure plan \
-  -out=ecr.tfplan
-```
-
-For a clean first deployment using the final configuration, the plan contains:
-
-```text
-aws_ecr_repository.frontend
-aws_ecr_repository.backend
-aws_ecr_registry_scanning_configuration.project
-```
-
-Review the plan rather than relying only on the resource count.
-
----
-
-## 3B.17 Review ECR controls before apply
-
-Render the saved plan:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure show \
-  -no-color \
-  ecr.tfplan
-```
-
-Focused review:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure show \
-  -no-color \
-  ecr.tfplan \
-| grep -E \
-'(^  # |name[[:space:]]*=|image_tag_mutability|force_delete|encryption_type|scan_type|scan_frequency|filter[[:space:]]*=|filter_type|Plan:)'
-```
-
-Confirm:
-
-```text
-ecs-fargate-cicd-frontend
-ecs-fargate-cicd-backend
-
-image_tag_mutability = "IMMUTABLE"
-force_delete         = false
-encryption_type      = "AES256"
-
-scan_type      = "BASIC"
-scan_frequency = "SCAN_ON_PUSH"
-filter         = "ecs-fargate-cicd-*"
-filter_type    = "WILDCARD"
-```
-
-No ECR repository should be marked for replacement.
-
-No unexpected resource should be created.
-
----
-
-## 3B.18 Apply the reviewed plan
-
-Verify the identity again:
-
-```bash
-aws-vault exec terraform -- \
-  aws sts get-caller-identity
-```
-
-Apply the saved plan:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure apply \
-  ecr.tfplan
-```
-
-Confirm that no resources are destroyed.
-
----
-
-## 3B.19 Capture repository outputs
-
-Retrieve the repository names:
-
-```bash
-FRONTEND_REPO=$(
-  aws-vault exec terraform -- \
-    terraform -chdir=terraform/infrastructure output \
-    -raw frontend_ecr_repository_name
-)
-
-BACKEND_REPO=$(
-  aws-vault exec terraform -- \
-    terraform -chdir=terraform/infrastructure output \
-    -raw backend_ecr_repository_name
-)
-
-echo "Frontend: $FRONTEND_REPO"
-echo "Backend:  $BACKEND_REPO"
-```
-
-Expected:
-
-```text
-Frontend: ecs-fargate-cicd-frontend
-Backend:  ecs-fargate-cicd-backend
-```
-
-Retrieve repository URLs:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure output \
-  frontend_ecr_repository_url
-
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure output \
-  backend_ecr_repository_url
-```
-
-Expected URI pattern:
-
-```text
-421438965568.dkr.ecr.us-east-1.amazonaws.com/<repository>
-```
-
----
-
-## 3B.20 Verify the live ECR repository controls
-
-Query ECR directly:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-repositories \
-  --repository-names \
-    "$FRONTEND_REPO" \
-    "$BACKEND_REPO" \
-  --query 'repositories[].{
-    Name:repositoryName,
-    URI:repositoryUri,
-    TagMutability:imageTagMutability,
-    Encryption:encryptionConfiguration.encryptionType
-  }' \
-  --output table
-```
-
-Required values for both repositories:
-
-```text
-TagMutability = IMMUTABLE
-Encryption    = AES256
-```
-
-Check the live registry scanning rule separately:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr get-registry-scanning-configuration \
-  --region us-east-1
-```
-
-Required configuration:
-
-```text
-scanType      = BASIC
-scanFrequency = SCAN_ON_PUSH
-filter        = ecs-fargate-cicd-*
-filterType    = WILDCARD
-```
-
----
-
-## 3B.21 Confirm the repositories are empty before publication
-
-Before image publication:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr list-images \
-  --repository-name "$FRONTEND_REPO"
-
-aws-vault exec terraform -- \
-  aws ecr list-images \
-  --repository-name "$BACKEND_REPO"
-```
-
-A new repository should return an empty image list.
-
-Terraform manages ECR infrastructure.
-
-Docker and the future Jenkins pipeline manage image contents.
-
----
-
-## 3B.22 Verify main Terraform state
-
-Run:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure state list
-```
-
-Expected resources include:
-
-```text
-data.aws_caller_identity.current
-data.aws_region.current
-aws_ecr_repository.backend
-aws_ecr_repository.frontend
-aws_ecr_registry_scanning_configuration.project
-```
-
----
-
-## 3B.23 Verify the main remote-state object
-
-Set:
-
-```bash
-BUCKET="ecs-fargate-cicd-tfstate-421438965568-us-east-1"
-```
-
-Inspect:
-
-```bash
-aws-vault exec terraform -- \
-  aws s3api head-object \
-  --bucket "$BUCKET" \
-  --key infrastructure/terraform.tfstate
-```
-
-Confirm:
-
-```text
-ContentLength        = non-zero
-ServerSideEncryption = AES256
-VersionId            = populated
-```
-
-This proves the main infrastructure is using:
-
-```text
-infrastructure/terraform.tfstate
-```
-
-rather than the bootstrap state key.
-
----
-
-## 3B.24 Verify Terraform idempotency
-
-Run:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure plan
-```
-
-Required:
-
-```text
-No changes. Your infrastructure matches the configuration.
-```
-
-This closes the ECR infrastructure checkpoint.
-
----
-
-# Phase 3B.2: Publish Application Images
-
-## 3B.25 Artifact-tagging strategy
-
-Do not use `latest` as the deployment identity.
-
-The application image tag is derived from the most recent Git commit that
-changed the frontend or backend application/container source.
-
-From Git Bash:
-
-```bash
-APP_SHA=$(
-  git log -1 \
-    --format=%H \
-    -- frontend backend \
-  | cut -c1-12
-)
-
-echo "$APP_SHA"
-```
-
-For the validated deployment documented in this project:
-
-```text
-fbfbbe4665da
-```
-
-Later Terraform-only or documentation-only commits do not change this image tag.
-
-This keeps the artifact tag tied to application source rather than unrelated
-repository changes.
-
----
-
-## 3B.26 Verify application source is clean
-
-Before building:
-
-```bash
-git status --short -- frontend backend
-```
-
-Required:
-
-```text
-<no output>
-```
-
-Do not claim an image represents a Git SHA when the build context contains
-uncommitted application changes.
-
----
-
-## 3B.27 Rebuild the publication images
-
-Switch to WSL and enter the shared Windows checkout:
-
-```bash
-cd /mnt/c/Users/uzobo/projects/1-percent-university/tech-challenge-1
-```
-
-Derive the same application SHA:
-
-```bash
-APP_SHA=$(
-  git log -1 \
-    --format=%H \
-    -- frontend backend \
-  | cut -c1-12
-)
-
-echo "$APP_SHA"
-```
-
-Build the backend:
-
-```bash
-docker build \
-  --pull \
-  --no-cache \
-  -t tc1-backend:"$APP_SHA" \
-  ./backend
-```
-
-Build the frontend:
-
-```bash
-docker build \
-  --pull \
-  --no-cache \
-  -t tc1-frontend:"$APP_SHA" \
-  ./frontend
-```
-
-The images are rebuilt before publication rather than relabeling an earlier
-test image.
-
----
-
-## 3B.28 Verify image platform
-
-Run:
-
-```bash
-docker image inspect \
-  tc1-backend:"$APP_SHA" \
-  --format 'backend: {{.Os}}/{{.Architecture}}'
-
-docker image inspect \
-  tc1-frontend:"$APP_SHA" \
-  --format 'frontend: {{.Os}}/{{.Architecture}}'
-```
-
-Expected:
-
-```text
-backend: linux/amd64
-frontend: linux/amd64
-```
-
-This matches the planned ECS Fargate runtime architecture.
-
----
-
-## 3B.29 Smoke-test the rebuilt backend image
-
-Remove an earlier temporary container:
-
-```bash
-docker rm -f tc1-backend-publish 2>/dev/null || true
-```
-
-Run:
-
-```bash
-docker run -d \
-  --name tc1-backend-publish \
-  -p 8080:8080 \
-  -e CORS_ORIGIN=http://localhost:3000 \
-  tc1-backend:"$APP_SHA"
-```
-
-Verify health:
-
-```bash
-curl -fsS http://localhost:8080/health
-echo
-```
-
-Expected:
-
-```json
-{"status":"ok"}
-```
-
-Verify API response:
-
-```bash
-curl -fsS http://localhost:8080/api
-echo
-```
-
-Expected body shape:
-
-```json
-{"id":"<guid>"}
-```
-
-Verify runtime identity:
-
-```bash
-docker exec tc1-backend-publish id
-```
-
-Expected:
-
-```text
-uid=1000(node) ...
-```
-
-Remove the temporary container:
-
-```bash
-docker rm -f tc1-backend-publish
-```
-
----
-
-## 3B.30 Smoke-test the rebuilt frontend image
-
-Remove an earlier temporary container:
-
-```bash
-docker rm -f tc1-frontend-publish 2>/dev/null || true
-```
-
-Run:
-
-```bash
-docker run -d \
-  --name tc1-frontend-publish \
-  -p 3000:3000 \
-  tc1-frontend:"$APP_SHA"
-```
-
-Verify:
-
-```bash
-curl -fsS -o /dev/null \
-  -w 'HTTP %{http_code} %{content_type}\n' \
-  http://localhost:3000/
-```
-
-Expected:
-
-```text
-HTTP 200 text/html
-```
-
-Verify runtime identity:
-
-```bash
-docker exec tc1-frontend-publish id
-```
-
-Expected:
-
-```text
-uid=101(nginx) ...
-```
-
-Remove the temporary container:
-
-```bash
-docker rm -f tc1-frontend-publish
-```
-
-The complete router integration test does not need to be repeated here.
-
-Phase 2 already established the frontend/backend routing behavior.
-
-This checkpoint verifies the newly rebuilt publication images.
-
----
-
-## 3B.31 Authenticate Docker to Amazon ECR
-
-Return to Git Bash.
-
-Set:
-
-```bash
-REGISTRY="421438965568.dkr.ecr.us-east-1.amazonaws.com"
-
-APP_SHA=$(
-  git log -1 \
-    --format=%H \
-    -- frontend backend \
-  | cut -c1-12
-)
-```
-
-Confirm Docker Desktop is reachable:
-
-```bash
-docker version
-```
-
-Both Client and Server sections must appear.
-
-Verify AWS identity:
-
-```bash
-aws-vault exec terraform -- \
-  aws sts get-caller-identity
-```
-
-The ARN must contain:
-
-```text
-assumed-role/TerraformExecutionRole
-```
-
-Authenticate Docker:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr get-login-password \
-  --region us-east-1 \
-| docker login \
-    --username AWS \
-    --password-stdin "$REGISTRY"
-```
-
-Expected:
-
-```text
-Login Succeeded
-```
-
-AWS credentials remain in the Git Bash/aws-vault boundary.
-
-WSL does not require AWS CLI or aws-vault.
-
----
-
-## 3B.32 Tag the images for ECR
-
-Frontend:
-
-```bash
-docker tag \
-  tc1-frontend:"$APP_SHA" \
-  "$REGISTRY/ecs-fargate-cicd-frontend:$APP_SHA"
-```
-
-Backend:
-
-```bash
-docker tag \
-  tc1-backend:"$APP_SHA" \
-  "$REGISTRY/ecs-fargate-cicd-backend:$APP_SHA"
-```
-
-Verify:
-
-```bash
-docker image inspect \
-  "$REGISTRY/ecs-fargate-cicd-frontend:$APP_SHA" \
-  --format '{{json .RepoTags}}'
-
-docker image inspect \
-  "$REGISTRY/ecs-fargate-cicd-backend:$APP_SHA" \
-  --format '{{json .RepoTags}}'
-```
-
----
-
-## 3B.33 Push both images
-
-Frontend:
-
-```bash
-docker push \
-  "$REGISTRY/ecs-fargate-cicd-frontend:$APP_SHA"
-```
-
-Backend:
-
-```bash
-docker push \
-  "$REGISTRY/ecs-fargate-cicd-backend:$APP_SHA"
-```
-
-The repositories use immutable tags.
-
-Once `fbfbbe4665da` exists, a different image cannot silently replace that tag.
-
----
-
-## 3B.34 Verify the tagged artifacts exist
-
-Frontend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-images \
-  --repository-name ecs-fargate-cicd-frontend \
-  --image-ids imageTag="$APP_SHA" \
-  --query 'imageDetails[0].{
-    Digest:imageDigest,
-    Tags:imageTags,
-    PushedAt:imagePushedAt,
-    SizeBytes:imageSizeInBytes,
-    ManifestType:imageManifestMediaType
-  }'
-```
-
-Backend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-images \
-  --repository-name ecs-fargate-cicd-backend \
-  --image-ids imageTag="$APP_SHA" \
-  --query 'imageDetails[0].{
-    Digest:imageDigest,
-    Tags:imageTags,
-    PushedAt:imagePushedAt,
-    SizeBytes:imageSizeInBytes,
-    ManifestType:imageManifestMediaType
-  }'
-```
-
-Each artifact must have:
-
-```text
-Digest      = sha256:...
-Tags        = <APP_SHA>
-PushedAt    = populated
-SizeBytes   = non-zero
-ManifestType = populated
-```
-
----
-
-## 3B.35 Understand the OCI image-index structure
-
-Docker BuildKit published the application tag as an OCI image index.
-
-ECR displayed three related rows for each application artifact:
-
-```text
-Tagged OCI image index
-        |
-        +-- platform-specific container image
-        |
-        +-- small provenance/attestation manifest
-```
-
-For the frontend deployment:
-
-```text
-Tagged index:
-sha256:6984132d99b446a66e9ff610a8339b1019f858cd8267c1310e14a5b73ee3e674
-
-Platform image:
-sha256:9c35064c946e148654af2783a47c05b2ea491a11c121ff24a303a8499eb3d4bb
-```
-
-For the backend deployment:
-
-```text
-Tagged index:
-sha256:b785477b5c10ac772ee9ecd4bcd5195bb0ae14fab6ccac75e29e50cd7d76b726
-
-Platform image:
-sha256:d17aff133c979948b041ca72d9887710c0e5915168aa150c933d74a60d793236
-```
-
-The small untagged manifest is build/provenance metadata rather than another
-copy of the running application.
-
-One application tag can therefore produce several rows in the ECR console.
-
----
-
-## 3B.36 Inspect the complete ECR artifact structure
-
-Frontend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-images \
-  --repository-name ecs-fargate-cicd-frontend \
-  --query 'imageDetails[].{
-    Digest:imageDigest,
-    Tags:imageTags,
-    Size:imageSizeInBytes,
-    ManifestType:imageManifestMediaType,
-    ArtifactType:artifactMediaType
-  }' \
-  --output table
-```
-
-Backend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-images \
-  --repository-name ecs-fargate-cicd-backend \
-  --query 'imageDetails[].{
-    Digest:imageDigest,
-    Tags:imageTags,
-    Size:imageSizeInBytes,
-    ManifestType:imageManifestMediaType,
-    ArtifactType:artifactMediaType
-  }' \
-  --output table
-```
-
-The tagged artifact uses:
-
-```text
-application/vnd.oci.image.index.v1+json
-```
-
-The larger untagged manifest represents the actual platform image used for the
-container runtime.
-
-The very small manifest represents BuildKit metadata.
-
----
-
-## 3B.37 Query vulnerability scans by platform-image digest
-
-Do not query ECR Basic scan findings using the tagged OCI index.
-
-The scan findings belong to the platform-specific image digest.
-
-For the validated deployment:
-
-```bash
-FRONTEND_DIGEST="sha256:9c35064c946e148654af2783a47c05b2ea491a11c121ff24a303a8499eb3d4bb"
-
-BACKEND_DIGEST="sha256:d17aff133c979948b041ca72d9887710c0e5915168aa150c933d74a60d793236"
-```
-
-Frontend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-image-scan-findings \
-  --repository-name ecs-fargate-cicd-frontend \
-  --image-id imageDigest="$FRONTEND_DIGEST" \
-  --query '{
-    Status:imageScanStatus.status,
-    CompletedAt:imageScanFindings.imageScanCompletedAt,
-    SeverityCounts:imageScanFindings.findingSeverityCounts
-  }'
-```
-
-Backend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-image-scan-findings \
-  --repository-name ecs-fargate-cicd-backend \
-  --image-id imageDigest="$BACKEND_DIGEST" \
-  --query '{
-    Status:imageScanStatus.status,
-    CompletedAt:imageScanFindings.imageScanCompletedAt,
-    SeverityCounts:imageScanFindings.findingSeverityCounts
-  }'
-```
-
-The validated deployment returned:
-
-```text
-Status = COMPLETE
-```
-
-for both images.
-
-Severity counts were:
-
-```json
-{}
-```
-
-for both images.
-
-This means ECR Basic reported no vulnerability findings at scan time.
-
----
-
-## 3B.38 Query HIGH and CRITICAL findings explicitly
-
-Frontend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-image-scan-findings \
-  --repository-name ecs-fargate-cicd-frontend \
-  --image-id imageDigest="$FRONTEND_DIGEST" \
-  --query 'imageScanFindings.findings[?severity==`CRITICAL` || severity==`HIGH`].{
-    Severity:severity,
-    Finding:name,
-    Description:description,
-    URI:uri
-  }'
-```
-
-Backend:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-image-scan-findings \
-  --repository-name ecs-fargate-cicd-backend \
-  --image-id imageDigest="$BACKEND_DIGEST" \
-  --query 'imageScanFindings.findings[?severity==`CRITICAL` || severity==`HIGH`].{
-    Severity:severity,
-    Finding:name,
-    Description:description,
-    URI:uri
-  }'
-```
-
-The validated deployment returned:
-
-```json
-[]
-```
-
-for both images.
-
----
-
-## 3B.39 Scanner scope
-
-The correct project claim is:
-
-```text
-Both published platform images completed Amazon ECR Basic vulnerability scans
-with no findings reported at scan time.
-```
-
-Do not claim:
-
-```text
-The application has no vulnerabilities.
-```
-
-ECR Basic scanning and the later Trivy CI control have different coverage.
-
-The Jenkins phase will run Trivy as a separate image-security check.
-
----
-
-## 3B.40 Capture Phase 3B evidence
-
-Create:
-
-```text
-docs/evidence/phase-3b/
-```
-
-Recommended evidence files:
-
-```text
-ecr-infrastructure-validation.txt
-ecr-artifact-validation.txt
-```
-
-The infrastructure evidence should contain:
-
-```text
-Terraform execution identity
-Live ECR repository controls
-Registry scanning configuration
-Terraform state inventory
-Main remote-state metadata
-Terraform idempotency result
-```
-
-The artifact evidence should contain:
-
-```text
-Application source tag
-Frontend ECR artifact metadata
-Backend ECR artifact metadata
-OCI manifest structure
-Frontend scan result
-Backend scan result
-HIGH/CRITICAL query results
-```
-
-Do not place credentials, session tokens, MFA codes, or ECR authorization
-passwords in evidence files.
-
----
-
-## 3B.41 Troubleshooting
-
-### aws-vault not found during ECR login
-
-Symptom:
-
-```text
-aws-vault: command not found
-password is empty
-```
-
-Cause:
-
-The ECR authentication command was executed from WSL.
-
-This project uses:
-
-```text
-WSL
-→ Docker build and local container validation
-
-Git Bash
-→ AWS CLI, aws-vault, Terraform, ECR authentication
-```
-
-Return to Git Bash before running:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr get-login-password \
-  --region us-east-1 \
-| docker login \
-    --username AWS \
-    --password-stdin "$REGISTRY"
-```
-
----
-
-### ScanNotFoundException when querying by image tag
-
-Symptom:
-
-```text
-ScanNotFoundException:
-Image scan does not exist for imageTag <APP_SHA>
-```
-
-Cause:
-
-The source-derived tag points to an OCI image index.
-
-ECR Basic scan findings are associated with the referenced platform-image
-digest.
-
-Inspect the repository:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-images \
-  --repository-name <repository> \
-  --query 'imageDetails[].{
-    Digest:imageDigest,
-    Tags:imageTags,
-    Size:imageSizeInBytes,
-    ManifestType:imageManifestMediaType,
-    ArtifactType:artifactMediaType
-  }' \
-  --output table
-```
-
-Query the scan using the platform-image digest rather than the OCI-index tag.
-
----
-
-### Scan quota exceeded
-
-Symptom:
-
-```text
-LimitExceededException:
-The scan quota per image has been exceeded.
-```
-
-Cause:
-
-The image already received a Basic scan within the allowed scan interval.
-
-Do not repeatedly call:
-
-```text
-start-image-scan
+Part 1 - Multi-AZ VPC Foundation
+Part 2 - Internet and Private Egress Routing
+Part 3 - Network Security Boundaries
+Part 4 - Application Load Balancer and Layer-7 Routing
 ```
-
-Retrieve the existing findings instead:
-
-```bash
-aws-vault exec terraform -- \
-  aws ecr describe-image-scan-findings \
-  --repository-name <repository> \
-  --image-id imageDigest="<platform-image-digest>"
-```
-
----
-
-### Invalid MFA code
-
-Symptom:
-
-```text
-AccessDenied:
-MultiFactorAuthentication failed with invalid MFA one time pass code
-```
-
-Retry the aws-vault command with a current MFA code.
-
-A later command reaching ECR confirms that role assumption succeeded.
-
-Do not alter IAM permissions to solve an expired or mistyped MFA code.
-
----
-
-### Registry has BASIC scanning but no rules
-
-Symptom:
-
-```json
-{
-  "scanType": "BASIC",
-  "rules": []
-}
-```
-
-A repository-level `scan_on_push` field may still appear in repository metadata,
-but the project uses the current registry-level scanning model.
-
-Configure:
-
-```hcl
-resource "aws_ecr_registry_scanning_configuration" "project" {
-  scan_type = "BASIC"
-
-  rule {
-    scan_frequency = "SCAN_ON_PUSH"
-
-    repository_filter {
-      filter      = "${var.project_name}-*"
-      filter_type = "WILDCARD"
-    }
-  }
-}
-```
-
-Inspect existing account-level rules before Terraform manages this resource.
-
----
-
-## 3B.42 Verify final Terraform idempotency
-
-Run:
-
-```bash
-aws-vault exec terraform -- \
-  terraform -chdir=terraform/infrastructure plan
-```
-
-Required:
-
-```text
-No changes. Your infrastructure matches the configuration.
-```
-
----
-
-## 3B.43 Git safety checks
-
-Terraform working files must remain excluded from Git.
-
-Check:
-
-```bash
-git check-ignore -v \
-  terraform/infrastructure/ecr.tfplan \
-  terraform/infrastructure/ecr-scanning-fix.tfplan
-```
-
-Do not commit:
-
-```text
-*.tfplan
-.terraform/
-terraform.tfstate
-terraform.tfstate.backup
-```
-
-Commit:
-
-```text
-terraform/infrastructure/backend.tf
-terraform/infrastructure/ecr.tf
-terraform/infrastructure/locals.tf
-terraform/infrastructure/outputs.tf
-terraform/infrastructure/providers.tf
-terraform/infrastructure/variables.tf
-terraform/infrastructure/versions.tf
-terraform/infrastructure/.terraform.lock.hcl
-docs/design-decisions.md
-docs/evidence/phase-3b/
-```
-
----
-
-## 3B.44 Phase acceptance criteria
-
-Phase 3B passes when:
-
-- Terraform runs through `TerraformExecutionRole`.
-- Main infrastructure state uses `infrastructure/terraform.tfstate`.
-- Frontend and backend ECR repositories exist.
-- Both repositories use immutable image tags.
-- Both repositories use AES256 encryption.
-- `force_delete` is disabled.
-- Registry Basic scanning contains a project-scoped `SCAN_ON_PUSH` rule.
-- The main Terraform plan is idempotent.
-- Application images are rebuilt from committed source before publication.
-- The publication tag is derived from the application/container source commit.
-- Both published artifacts exist in ECR.
-- OCI index and platform-image identities are distinguished correctly.
-- ECR Basic scans complete against both platform-image digests.
-- No HIGH or CRITICAL findings are reported for the validated images.
-- Terraform plan files and state files remain outside Git.
-
----
-
-## Phase 3B result
-
-Phase 3B established the project's container artifact pipeline:
-
-```text
-Committed application source
-        |
-        | APP_SHA = fbfbbe4665da
-        v
-Rebuilt linux/amd64 images
-        |
-        | local smoke validation
-        v
-ECR authentication through
-TerraformExecutionRole
-        |
-        v
-Private ECR repositories
-        |
-        +-- immutable source-derived tag
-        +-- AES256 encryption
-        +-- protected repository deletion
-        +-- BASIC SCAN_ON_PUSH rule
-        |
-        v
-OCI image index
-        |
-        +-- platform container image
-        +-- BuildKit provenance metadata
-        |
-        v
-ECR Basic scan against
-platform-image digest
-```
-
-Both platform images completed ECR Basic vulnerability scans with no findings
-reported at scan time.
-
-The published artifacts are now ready to be referenced by the later ECS task
-definitions.
-
-
-# Phase 3C: Multi-AZ VPC Networking
-
-## Purpose
-
-This phase creates the network foundation used by the Application Load Balancer
-and ECS Fargate services.
-
-The design uses two Availability Zones with:
-
-- one public-tier subnet per Availability Zone
-- one private subnet per Availability Zone
-- one Internet Gateway
-- one public NAT Gateway per Availability Zone
-- one shared public route table
-- one private route table per Availability Zone
 
-The completed topology is:
+The completed foundation is:
 
 ```text
                               Internet
                                  |
                                  v
-                         Internet Gateway
-                                 |
-                 +---------------+---------------+
-                 |                               |
-                 v                               v
-          Public Subnet A                 Public Subnet B
-            us-east-1a                      us-east-1b
-           10.20.0.0/24                    10.20.1.0/24
-                 |                               |
-             NAT-A                           NAT-B
-                 |                               |
-                 v                               v
-         Private Subnet A                Private Subnet B
-            us-east-1a                      us-east-1b
-          10.20.10.0/24                  10.20.11.0/24
+                        Application ALB
+                       us-east-1a + 1b
+                        /             \
+                       /               \
+                 Frontend TG        Backend TG
+                    :3000              :8080
+                       \               /
+                        \             /
+                    Private subnets A/B
+                         |         |
+                       NAT-A     NAT-B
+                         \         /
+                         Internet
 ```
 
-The private subnets will later host ECS Fargate tasks.
+At the end of this phase, the target groups exist but contain no application
+targets. Phase 3C adds the ECS Fargate workloads.
 
 ---
 
-## 3C.1 Architecture goals
+## Part 1: Multi-AZ VPC Foundation
+
+### 3B.1 Architecture goals
 
 This network design addresses several architecture qualities.
 
@@ -1950,7 +116,7 @@ for this challenge deployment.
 
 ---
 
-## 3C.2 Define the VPC CIDR
+### 3B.2 Define the VPC CIDR
 
 Append to:
 
@@ -1998,7 +164,7 @@ recognize during troubleshooting.
 
 ---
 
-## 3C.3 Discover Availability Zones
+### 3B.3 Discover Availability Zones
 
 Create:
 
@@ -2045,7 +211,7 @@ cidrsubnet(10.20.0.0/16, 8, 11) -> 10.20.11.0/24
 
 ---
 
-## 3C.4 Create the VPC
+### 3B.4 Create the VPC
 
 Add:
 
@@ -2067,7 +233,7 @@ inside the VPC.
 
 ---
 
-## 3C.5 Create public-tier subnets
+### 3B.5 Create public-tier subnets
 
 Add:
 
@@ -2097,7 +263,7 @@ become functionally public after the Internet Gateway route is added.
 
 ---
 
-## 3C.6 Create private subnets
+### 3B.6 Create private subnets
 
 Add:
 
@@ -2122,7 +288,7 @@ ECS Fargate tasks will later run in these subnets without public IP addresses.
 
 ---
 
-## 3C.7 Attach an Internet Gateway
+### 3B.7 Attach an Internet Gateway
 
 Add:
 
@@ -2149,7 +315,7 @@ security policy
 
 ---
 
-## 3C.8 Validate the VPC foundation
+### 3B.8 Validate the VPC foundation
 
 Format:
 
@@ -2213,7 +379,7 @@ aws_subnet.private["us-east-1b"]
 
 ---
 
-## 3C.9 Review the network foundation plan
+### 3B.9 Review the network foundation plan
 
 Run:
 
@@ -2249,7 +415,7 @@ Plan: 6 to add, 0 to change, 0 to destroy.
 
 ---
 
-## 3C.10 Apply the VPC foundation
+### 3B.10 Apply the VPC foundation
 
 Apply the reviewed plan:
 
@@ -2267,7 +433,7 @@ Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
 
 ---
 
-## 3C.11 Verify the VPC directly in AWS
+### 3B.11 Verify the VPC directly in AWS
 
 Capture the VPC ID:
 
@@ -2323,7 +489,7 @@ Both values must be `true`.
 
 ---
 
-## 3C.12 Verify the subnet layout
+### 3B.12 Verify the subnet layout
 
 Run:
 
@@ -2354,9 +520,9 @@ private  us-east-1b   10.20.11.0/24   false
 
 ---
 
-# Phase 3C.2: Internet and Private Egress Routing
+## Part 2: Internet and Private Egress Routing
 
-## 3C.13 Allocate NAT Elastic IP addresses
+### 3B.13 Allocate NAT Elastic IP addresses
 
 Add to `network.tf`:
 
@@ -2376,7 +542,7 @@ One Elastic IP is allocated for each NAT Gateway.
 
 ---
 
-## 3C.14 Create one NAT Gateway per Availability Zone
+### 3B.14 Create one NAT Gateway per Availability Zone
 
 Add:
 
@@ -2407,7 +573,7 @@ public["us-east-1b"] -> nat["us-east-1b"]
 
 ---
 
-## 3C.15 Create the shared public route table
+### 3B.15 Create the shared public route table
 
 Both public subnets require the same default route, so one shared route table is
 used.
@@ -2448,7 +614,7 @@ At this point, the designated public-tier subnets are functionally public.
 
 ---
 
-## 3C.16 Create AZ-specific private route tables
+### 3B.16 Create AZ-specific private route tables
 
 Add:
 
@@ -2470,7 +636,7 @@ different NAT Gateway.
 
 ---
 
-## 3C.17 Route each private subnet through its local-AZ NAT Gateway
+### 3B.17 Route each private subnet through its local-AZ NAT Gateway
 
 Add:
 
@@ -2511,7 +677,7 @@ and independently for `us-east-1b`.
 
 ---
 
-## 3C.18 Add network outputs
+### 3B.18 Add network outputs
 
 Append to `outputs.tf`:
 
@@ -2584,7 +750,7 @@ output "private_route_table_ids_by_az" {
 
 ---
 
-## 3C.19 Plan the routing layer
+### 3B.19 Plan the routing layer
 
 Run:
 
@@ -2617,7 +783,7 @@ The resources are:
 
 ---
 
-## 3C.20 Review the routing plan
+### 3B.20 Review the routing plan
 
 Run:
 
@@ -2653,7 +819,7 @@ Plan: 14 to add, 0 to change, 0 to destroy.
 
 ---
 
-## 3C.21 Apply the routing layer
+### 3B.21 Apply the routing layer
 
 Apply:
 
@@ -2673,7 +839,7 @@ Apply complete! Resources: 14 added, 0 changed, 0 destroyed.
 
 ---
 
-## 3C.22 Verify NAT Gateways
+### 3B.22 Verify NAT Gateways
 
 Run:
 
@@ -2704,7 +870,7 @@ route table points to that NAT.
 
 ---
 
-## 3C.23 Verify route tables
+### 3B.23 Verify route tables
 
 Run:
 
@@ -2747,7 +913,7 @@ Required private route B:
 
 ---
 
-## 3C.24 Verify Terraform state and idempotency
+### 3B.24 Verify Terraform state and idempotency
 
 Inspect the managed network resources:
 
@@ -2773,9 +939,9 @@ No changes. Your infrastructure matches the configuration.
 
 ---
 
-## 3C.25 Phase acceptance criteria
+### 3B.25 VPC and routing acceptance criteria
 
-Phase 3C passes when:
+Parts 1 and 2 pass when:
 
 - one non-default VPC exists with CIDR `10.20.0.0/16`
 - DNS support and DNS hostnames are enabled
@@ -2792,34 +958,27 @@ Phase 3C passes when:
 
 ---
 
-# Phase 3D: Network Security and Application Load Balancing
+## Part 3: Network Security Boundaries
 
-## Purpose
+This part establishes the network trust boundaries between the public
+Application Load Balancer and the private frontend and backend application
+tiers.
 
-This phase establishes the application network trust boundaries and creates the
-single public Application Load Balancer used by the frontend and backend.
-
-The final traffic graph is:
+The intended traffic graph is:
 
 ```text
-Internet
-   |
-   | TCP/80
-   v
-Application Load Balancer
-   |
-   +------ TCP/3000 ------> Frontend ECS targets
-   |
-   +------ TCP/8080 ------> Backend ECS targets
+Internet -> ALB       TCP/80
+
+ALB -> Frontend       TCP/3000
+ALB -> Backend        TCP/8080
 ```
 
-Frontend and backend tasks remain in private subnets.
+Frontend and backend workloads remain private and do not accept direct public
+application ingress.
 
 ---
 
-# Phase 3D.1: Security Boundaries
-
-## 3D.1 Architecture goals
+### 3B.26 Architecture goals
 
 ### Segmentation
 
@@ -2874,7 +1033,7 @@ does not automatically modify the other.
 
 ---
 
-## 3D.2 Create the ALB security group
+### 3B.27 Create the ALB security group
 
 Create:
 
@@ -2919,7 +1078,7 @@ The application containers themselves do not receive this rule.
 
 ---
 
-## 3D.3 Create the frontend security group
+### 3B.28 Create the frontend security group
 
 Add:
 
@@ -2969,7 +1128,7 @@ resource "aws_vpc_security_group_egress_rule" "frontend_https" {
 
 ---
 
-## 3D.4 Create the backend security group
+### 3B.29 Create the backend security group
 
 Add:
 
@@ -3019,7 +1178,7 @@ resource "aws_vpc_security_group_egress_rule" "backend_https" {
 
 ---
 
-## 3D.5 Restrict ALB egress to application security groups
+### 3B.30 Restrict ALB egress to application security groups
 
 Allow ALB-to-frontend traffic:
 
@@ -3060,7 +1219,7 @@ backend through the ALB rather than through the frontend container.
 
 ---
 
-## 3D.6 Stateful security-group behavior
+### 3B.31 Stateful security-group behavior
 
 Security groups are stateful.
 
@@ -3079,7 +1238,7 @@ The outbound rules therefore do not create public inbound reachability.
 
 ---
 
-## 3D.7 Egress tradeoff
+### 3B.32 Egress tradeoff
 
 Frontend and backend egress is limited to TCP/443, but the destination CIDR is:
 
@@ -3096,7 +1255,7 @@ more restrictive egress controls for AWS service access.
 
 ---
 
-## 3D.8 Add the security-group output
+### 3B.33 Add the security-group output
 
 Append to `outputs.tf`:
 
@@ -3114,7 +1273,7 @@ output "security_group_ids" {
 
 ---
 
-## 3D.9 Plan the security boundary
+### 3B.34 Plan the security boundary
 
 Run:
 
@@ -3163,7 +1322,7 @@ Frontend -> Backend:8080
 
 ---
 
-## 3D.10 Apply the security boundary
+### 3B.35 Apply the security boundary
 
 Run:
 
@@ -3181,7 +1340,7 @@ Apply complete! Resources: 10 added, 0 changed, 0 destroyed.
 
 ---
 
-## 3D.11 Verify live security-group rules
+### 3B.36 Verify live security-group rules
 
 Retrieve the Terraform outputs:
 
@@ -3230,7 +1389,7 @@ sg-
 
 ---
 
-## 3D.12 Verify ALB security rules
+### 3B.37 Verify ALB security rules
 
 Run:
 
@@ -3263,7 +1422,7 @@ Backend SG  -> TCP/8080
 
 ---
 
-## 3D.13 Verify frontend security rules
+### 3B.38 Verify frontend security rules
 
 Run:
 
@@ -3295,7 +1454,7 @@ Egress:
 
 ---
 
-## 3D.14 Verify backend security rules
+### 3B.39 Verify backend security rules
 
 Run:
 
@@ -3327,7 +1486,7 @@ Egress:
 
 ---
 
-## 3D.15 Prove negative security claims
+### 3B.40 Prove negative security claims
 
 Verify that application security groups do not accept direct public IPv4
 ingress.
@@ -3364,9 +1523,9 @@ Neither application security group accepts direct IPv4 internet ingress.
 
 ---
 
-# Phase 3D.2: Application Load Balancer and Layer-7 Routing
+## Part 4: Application Load Balancer and Layer-7 Routing
 
-## 3D.16 Load-balancing architecture
+### 3B.41 Load-balancing architecture
 
 The ALB is the single public application entry point.
 
@@ -3390,7 +1549,7 @@ This creates failure-domain separation at the public entry tier.
 
 ---
 
-## 3D.17 Architecture qualities
+### 3B.42 Architecture qualities
 
 ### Load distribution
 
@@ -3423,7 +1582,7 @@ Availability depends on the number and placement of healthy ECS tasks.
 
 ---
 
-## 3D.18 Create the Application Load Balancer
+### 3B.43 Create the Application Load Balancer
 
 Create:
 
@@ -3464,7 +1623,7 @@ infrastructure can be removed after validation.
 
 ---
 
-## 3D.19 Create the frontend target group
+### 3B.44 Create the frontend target group
 
 Add:
 
@@ -3509,7 +1668,7 @@ application.
 
 ---
 
-## 3D.20 Create the backend target group
+### 3B.45 Create the backend target group
 
 Add:
 
@@ -3550,7 +1709,7 @@ The backend uses its explicit `/health` endpoint as the target-health signal.
 
 ---
 
-## 3D.21 Create the public HTTP listener
+### 3B.46 Create the public HTTP listener
 
 Add:
 
@@ -3579,7 +1738,7 @@ HTTP is the preferred production design.
 
 ---
 
-## 3D.22 Add backend path-based routing
+### 3B.47 Add backend path-based routing
 
 Add:
 
@@ -3628,7 +1787,7 @@ frontend target group
 
 ---
 
-## 3D.23 Why both `/api` and `/api/*` are used
+### 3B.48 Why both `/api` and `/api/*` are used
 
 The exact path:
 
@@ -3659,7 +1818,7 @@ covers both cases.
 
 ---
 
-## 3D.24 Layer-3 versus Layer-7 routing
+### 3B.49 Layer-3 versus Layer-7 routing
 
 The project now uses different kinds of routing.
 
@@ -3717,7 +1876,7 @@ healthy workload selection
 
 ---
 
-## 3D.25 Same-origin browser routing
+### 3B.50 Same-origin browser routing
 
 The frontend uses a relative API path:
 
@@ -3739,7 +1898,7 @@ origin for this challenge.
 
 ---
 
-## 3D.26 Backend health endpoint is not publicly routed
+### 3B.51 Backend health endpoint is not publicly routed
 
 The backend target group health checker calls:
 
@@ -3763,7 +1922,7 @@ The backend health endpoint does not need a dedicated public routing rule.
 
 ---
 
-## 3D.27 Add ALB outputs
+### 3B.52 Add ALB outputs
 
 Append to `outputs.tf`:
 
@@ -3795,7 +1954,7 @@ output "http_listener_arn" {
 
 ---
 
-## 3D.28 Plan the ALB foundation
+### 3B.53 Plan the ALB foundation
 
 Run:
 
@@ -3823,7 +1982,7 @@ aws_lb_listener_rule.backend_api
 
 ---
 
-## 3D.29 Review the ALB plan
+### 3B.54 Review the ALB plan
 
 Run:
 
@@ -3869,7 +2028,7 @@ Plan: 5 to add, 0 to change, 0 to destroy.
 
 ---
 
-## 3D.30 Apply the ALB foundation
+### 3B.55 Apply the ALB foundation
 
 Run:
 
@@ -3887,7 +2046,7 @@ Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
 
 ---
 
-## 3D.31 Verify the ALB directly in AWS
+### 3B.56 Verify the ALB directly in AWS
 
 Capture:
 
@@ -3932,7 +2091,7 @@ us-east-1b
 
 ---
 
-## 3D.32 Verify target-group configuration
+### 3B.57 Verify target-group configuration
 
 Run:
 
@@ -3973,7 +2132,7 @@ Matcher    200
 
 ---
 
-## 3D.33 Verify target groups are empty before ECS
+### 3B.58 Verify target groups are empty before ECS
 
 Capture target-group ARNs:
 
@@ -4022,7 +2181,7 @@ workloads have registered yet.
 
 ---
 
-## 3D.34 Verify the listener and routing rule
+### 3B.59 Verify the listener and routing rule
 
 Capture the listener:
 
@@ -4081,7 +2240,7 @@ and a default frontend action.
 
 ---
 
-## 3D.35 Verify pre-ECS public behavior
+### 3B.60 Verify pre-ECS public behavior
 
 Before ECS tasks register, request:
 
@@ -4119,7 +2278,7 @@ This is different from a DNS failure, timeout, or network-connectivity failure.
 
 ---
 
-## 3D.36 Verify Terraform idempotency
+### 3B.61 Verify Terraform idempotency
 
 Run:
 
@@ -4136,9 +2295,9 @@ No changes. Your infrastructure matches the configuration.
 
 ---
 
-## 3D.37 Phase acceptance criteria
+### 3B.62 Security and ALB acceptance criteria
 
-Phase 3D passes when:
+Parts 3 and 4 pass when:
 
 - three separate security groups exist for ALB, frontend, and backend
 - public ingress exists only on ALB TCP/80
@@ -4159,7 +2318,7 @@ Phase 3D passes when:
 
 ---
 
-## Phase 3C and 3D result
+## Phase 3B result
 
 The project now has a validated multi-AZ network and public application-entry
 layer:
@@ -4196,5 +2355,5 @@ application traffic.
 The load-balancing layer provides one public endpoint, service-specific target
 groups, health-check configuration, and path-based Layer-7 routing.
 
-ECS Fargate is the next dependency required to register healthy application
-targets behind the load balancer.
+Phase 3C introduces ECS Fargate and registers healthy frontend and backend
+application targets behind the load balancer.
