@@ -445,3 +445,5 @@ The application runtime and CI/CD control plane remain separate failure domains.
 - Jenkins host failure temporarily removes deployment capability.
 - Docker-group privilege remains an explicitly documented challenge tradeoff.
 
+
+## ADR-007: Use Fargate services with separated execution identities and CI/CD ownership

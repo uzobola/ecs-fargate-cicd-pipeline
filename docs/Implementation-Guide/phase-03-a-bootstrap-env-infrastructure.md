@@ -1022,7 +1022,6 @@ terraform/bootstrap/versions.tf
 terraform/bootstrap/.terraform.lock.hcl
 
 docs/design-decisions.md
-docs/implementation-guide.md
 docs/evidence/phase-3a/
 ```
 
@@ -1067,7 +1066,7 @@ git add \
   terraform/bootstrap/versions.tf \
   terraform/bootstrap/.terraform.lock.hcl \
   docs/design-decisions.md \
-  docs/implementation-guide.md \
+  docs/Implementation-Guide/phase-03-bootstrap-env-infrastructure.md \
   docs/evidence/phase-3a/
 ```
 

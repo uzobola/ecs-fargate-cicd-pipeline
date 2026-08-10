@@ -845,24 +845,14 @@ Measured load-test results and scaling evidence are documented in:
 
 Detailed phase-by-phase replication instructions:
 
-
-```text
-docs/implementation-guide.md
-```
 [Implementation Guide](docs/Implementation-Guide/)
 
 Architecture and engineering decisions:
 
-```text
-docs/design-decisions.md
-```
-[Design Decisions](docs/design-decisons/)
+[Design Decisions](docs/design-decisions.md)
 
 Validation evidence:
 
-```text
-docs/evidence/
-```
 [Evidence](docs/evidence/)
 
 
