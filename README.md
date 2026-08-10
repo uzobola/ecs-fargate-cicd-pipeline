@@ -739,7 +739,8 @@ The detailed local container and path-routing validation procedure is documented
 in:
 
 ```text
-docs/implementation-guide.md
+Detailed phase-by-phase replication instructions:
+[`docs/Implementation-Guide/`](docs/Implementation-Guide/)
 ```
 
 ---
