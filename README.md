@@ -847,6 +847,10 @@ Detailed phase-by-phase replication instructions:
 
 [Implementation Guide](docs/Implementation-Guide/)
 
+System architecture and control-plane boundaries:
+
+[Architecture](docs/architecture.md)
+
 Architecture and engineering decisions:
 
 [Design Decisions](docs/design-decisions.md)
@@ -854,10 +858,6 @@ Architecture and engineering decisions:
 Validation evidence:
 
 [Evidence](docs/evidence/)
-
-System architecture and control-plane boundaries:
-
-[Architecture](docs/architecture.md)
 
 
 ---
