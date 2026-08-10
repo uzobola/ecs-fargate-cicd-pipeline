@@ -855,6 +855,10 @@ Validation evidence:
 
 [Evidence](docs/evidence/)
 
+System architecture and control-plane boundaries:
+
+[Architecture](docs/architecture.md)
+
 
 ---
 
