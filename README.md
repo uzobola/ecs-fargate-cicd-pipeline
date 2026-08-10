@@ -790,7 +790,9 @@ Minimum: 1
 Maximum: 4
 ```
 
-Load-test evidence is documented after executing the scaling validation phase.
+Measured load-test results and scaling evidence are documented in:
+
+[Phase 7: Auto Scaling Validation](docs/Implementation-Guide/phase-07-autoscaling-validation.md)
 
 ---
 
@@ -820,35 +822,49 @@ Load-test evidence is documented after executing the scaling validation phase.
 │
 ├── terraform/
 │   ├── bootstrap/
-│   └── infrastructure/
+|   ├── infrastructure/
+│   └── gitops-iam/
 │
-└── docs/
-    ├── implementation-guide.md
-    ├── design-decisions.md
-    └── evidence/
+└docs/
+├── Implementation-Guide/
+│   ├── README.md
+│   ├── phase-02-containerization-local-validation.md
+│   ├── phase-03-bootstrap-env-infrastructure.md
+│   ├── phase-03-aws-infrastructure.md
+│   ├── phase-04-jenkins-infrastructure.md
+│   ├── phase-05-jenkins-cicd.md
+│   ├── phase-06-end-to-end-validation.md
+│   └── phase-07-autoscaling-validation.md
+├── design-decisions.md
+└── evidence/
 ```
 
 ---
 
 # Documentation
 
-Detailed replication instructions:
+Detailed phase-by-phase replication instructions:
+
 
 ```text
 docs/implementation-guide.md
 ```
+[Implementation Guide](docs/Implementation-Guide/)
 
 Architecture and engineering decisions:
 
 ```text
 docs/design-decisions.md
 ```
+[Design Decisions](docs/design-decisons/)
 
 Validation evidence:
 
 ```text
 docs/evidence/
 ```
+[Evidence](docs/evidence/)
+
 
 ---
 
@@ -912,8 +928,6 @@ The private repository must be shared with the grader account specified in the
 challenge instructions.
 
 ---
-
-# Bonus: GitHub Actions GitOps Alternative
 
 # Bonus: GitHub Actions GitOps Alternative
 

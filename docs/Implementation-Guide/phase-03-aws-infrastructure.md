@@ -1761,7 +1761,6 @@ terraform/infrastructure/versions.tf
 terraform/infrastructure/.terraform.lock.hcl
 docs/design-decisions.md
 docs/evidence/phase-3b/
-docs/implementation-guide.md
 ```
 
 ---

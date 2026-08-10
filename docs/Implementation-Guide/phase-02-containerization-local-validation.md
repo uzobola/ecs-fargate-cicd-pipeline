@@ -841,7 +841,7 @@ Start the existing container:
 ```bash
 docker start tc1-backend
 docker start tc1-frontend
-docker start tc2-router
+docker start tc1-router
 ```
 
 Confirm the state:
