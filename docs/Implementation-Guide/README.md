@@ -33,6 +33,7 @@ System architecture and runtime relationships:
 
 ```text
 docs/architecture.md
+```
 
 Architecture and engineering decisions:
 

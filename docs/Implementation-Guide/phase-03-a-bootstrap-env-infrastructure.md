@@ -78,7 +78,7 @@ AWS access uses an MFA-backed role-assumption flow.
 The AWS CLI configuration contains a source profile:
 
 ```ini
-[profile grc-engineer]
+[profile test-engineer]
 region = us-east-1
 output = json
 ```
@@ -87,7 +87,7 @@ and a Terraform execution profile:
 
 ```ini
 [profile terraform]
-source_profile = grc-engineer
+source_profile = test-engineer
 role_arn       = arn:aws:iam::<account-id>:role/TerraformExecutionRole
 mfa_serial     = arn:aws:iam::<account-id>:mfa/test-engineer
 region         = us-east-1
@@ -116,7 +116,7 @@ aws-vault exec terraform -- <command>
 Do not run Terraform provisioning through:
 
 ```bash
-aws-vault exec grc-engineer -- <command>
+aws-vault exec test-engineer -- <command>
 ```
 
 That profile represents the source IAM user rather than the assumed execution
@@ -1108,7 +1108,7 @@ Cause:
 Terraform was executed through the source profile:
 
 ```bash
-aws-vault exec grc-engineer --
+aws-vault exec test-engineer --
 ```
 
 rather than the assumed-role profile.
