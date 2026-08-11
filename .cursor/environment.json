@@ -1,0 +1,14 @@
+{
+  "name": "ECS Fargate CI/CD sample apps",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; export PATH=\"$(dirname \"$(nvm which 24)\"):$PATH\"; cd backend && node index.js"
+    },
+    {
+      "name": "frontend",
+      "command": "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; export PATH=\"$(dirname \"$(nvm which 16.20.2)\"):$PATH\"; cd frontend && BROWSER=none npm start"
+    }
+  ]
+}
