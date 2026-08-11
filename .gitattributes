@@ -1,0 +1,4 @@
+# Normalize line endings for every text file to LF on checkout, regardless
+# of the OS or editor that last touched it. Binary files (images, provider
+# archives, etc.) are left untouched via Git's own text/binary auto-detection.
+* text=auto eol=lf
