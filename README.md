@@ -825,17 +825,19 @@ Measured load-test results and scaling evidence are documented in:
 │   └── infrastructure/
 │
 └── docs/
+    ├── architecture.md
+    ├── design-decisions.md
     ├── Implementation-Guide/
     │   ├── README.md
     │   ├── phase-02-containerization-local-validation.md
     │   ├── phase-03-a-bootstrap-env-infrastructure.md
-    │   ├── phase-03-b-aws-infrastructure.md
-    |   ├── phase-03-c-ecs-fargate-app-autoscaling.md
+    │   ├── phase-03-b-aws-network-edge-infrastructure.md
+    │   ├── phase-03-c-ecs-fargate-app-autoscaling.md
+    │   ├── phase-03-ecr-artifact-foundation-and-publication.md
     │   ├── phase-04-jenkins-infrastructure.md
     │   ├── phase-05-jenkins-cicd.md
     │   ├── phase-06-end-to-end-validation.md
     │   └── phase-07-autoscaling-validation.md
-    ├── design-decisions.md
     └── evidence/
 ```
 

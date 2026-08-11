@@ -89,14 +89,14 @@ and a Terraform execution profile:
 [profile terraform]
 source_profile = grc-engineer
 role_arn       = arn:aws:iam::<account-id>:role/TerraformExecutionRole
-mfa_serial     = arn:aws:iam::<account-id>:mfa/grc-engineer01
+mfa_serial     = arn:aws:iam::<account-id>:mfa/test-engineer
 region         = us-east-1
 ```
 
 The authentication path is:
 
 ```text
-grc-engineer01
+test-engineer
         |
         | MFA
         v
@@ -138,7 +138,7 @@ arn:aws:sts::<account-id>:assumed-role/TerraformExecutionRole/<session>
 The result must not show:
 
 ```text
-arn:aws:iam::<account-id>:user/grc-engineer01
+arn:aws:iam::<account-id>:user/test-engineer
 ```
 
 This proves infrastructure changes are executed with temporary role
@@ -1099,7 +1099,7 @@ Symptom:
 
 ```text
 AccessDenied:
-User arn:aws:iam::<account-id>:user/grc-engineer01
+User arn:aws:iam::<account-id>:user/test-engineer
 is not authorized to perform s3:CreateBucket
 ```
 
