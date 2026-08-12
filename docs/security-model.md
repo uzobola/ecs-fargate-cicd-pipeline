@@ -26,11 +26,18 @@ This document complements:
 ```text
 docs/architecture.md
 docs/design-decisions.md
+docs/iam-permissions-matrix.md
+docs/terraform-remote-state-security-checklist.md
+docs/evidence/trivy-security-gate.md
 ```
 
 The architecture document explains how the system is constructed.
 
 This document explains how access to that architecture is controlled.
+
+The IAM permissions matrix provides reviewable principal/action/resource/condition
+evidence, while the Terraform remote-state checklist focuses specifically on
+state encryption, locking, access governance, and recovery.
 
 ---
 
@@ -515,6 +522,15 @@ Jenkins IAM role
 
 AWS supplies temporary credentials through the EC2 metadata service.
 
+The Jenkins workload role trust relationship is:
+
+```text
+Trusted principal: ec2.amazonaws.com
+STS action:        sts:AssumeRole
+Credential source: EC2 instance profile / IMDSv2
+Static AWS keys:   none
+```
+
 IMDSv2 is required.
 
 This avoids storing static AWS credentials in:
@@ -573,6 +589,10 @@ Jenkins role
 
 Compromising Jenkins should therefore not automatically provide the same
 permissions as compromising the Terraform administration identity.
+
+Detailed principal/action/resource/condition evidence is documented in:
+
+[`iam-permissions-matrix.md`](iam-permissions-matrix.md)
 
 ---
 
@@ -692,11 +712,41 @@ GitHub Actions deployment IAM role
 The role trust policy restricts role assumption to the intended GitHub
 repository and `gitops` branch.
 
+The OIDC trust conditions require:
+
+```text
+aud = sts.amazonaws.com
+```
+
+and the immutable repository-and-branch subject used by this deployment:
+
+```text
+repo:uzobola@173111719/ecs-fargate-cicd-pipeline@1323400235:ref:refs/heads/gitops
+```
+
+This prevents `main`, unrelated branches, forks, and unrelated repositories from
+satisfying the trust relationship.
+
 The role receives deployment permissions similar in scope to the Jenkins
 deployment identity.
 
 This provides short-lived AWS credentials without storing AWS access keys in
 GitHub repository secrets.
+
+The trust model is intentionally different from Jenkins:
+
+```text
+Jenkins
+    -> AWS service trust
+    -> EC2 instance profile
+    -> temporary credentials
+
+GitHub Actions
+    -> federated trust
+    -> GitHub OIDC
+    -> AWS STS
+    -> temporary credentials
+```
 
 ---
 
@@ -768,6 +818,35 @@ image publication / deployment
 
 The project also configures ECR scanning for project repositories.
 
+The security gate was deliberately validated during implementation.
+
+Evidence of the failed scan, blocked pipeline, remediation commit, and successful
+rerun is documented in:
+
+[`evidence/trivy-security-gate.md`](evidence/trivy-security-gate.md)
+
+### Supply-chain limitations
+
+The implemented controls improve artifact integrity and vulnerability hygiene,
+but they do not provide full cryptographic software provenance.
+
+The project does not currently enforce:
+
+```text
+container-image signing
+Sigstore / Cosign verification
+SBOM attestation enforcement
+SLSA provenance verification
+admission-policy enforcement
+```
+
+Immutable tags prevent an existing tag from being silently replaced.
+
+Trivy detects known vulnerabilities covered by its vulnerability databases.
+
+Neither control, by itself, proves that an image was built by a trusted builder
+from a trusted source revision.
+
 ---
 
 # 19. Infrastructure Security Scanning
@@ -793,6 +872,34 @@ Trivy
 ```
 
 The distinction should be understood when evaluating the security posture.
+
+### Checkov Finding Governance
+
+Checkov is intentionally configured as a reporting control rather than a
+blocking pipeline gate because the challenge contains documented accepted
+tradeoffs, including public HTTP and public Jenkins access.
+
+Findings are classified as:
+
+```text
+fix-now
+accepted-with-rationale
+```
+
+Critical findings require either:
+
+```text
+remediation before the affected change is accepted
+```
+
+or:
+
+```text
+documented risk acceptance with rationale and compensating controls
+```
+
+This is currently a human review/governance rule rather than a Jenkins-enforced
+severity gate because the pipeline uses `--soft-fail`.
 
 ---
 
@@ -850,6 +957,39 @@ Terraform state is treated as sensitive because it may contain infrastructure
 identifiers and potentially sensitive resource values.
 
 State files must never be committed to the source repository.
+
+State access follows a separate infrastructure-administration boundary:
+
+```text
+Terraform execution role
+    -> Terraform state access
+
+Jenkins deployment role
+    -> no Terraform state access
+
+GitHub Actions deployment role
+    -> no Terraform state access
+
+Frontend / backend ECS execution roles
+    -> no Terraform state access
+```
+
+This preserves the distinction between:
+
+```text
+Infrastructure authority
+```
+
+and:
+
+```text
+Application deployment authority
+```
+
+Encryption, locking, version recovery, least-privilege review, and state-access
+governance are documented in:
+
+[`terraform-remote-state-security-checklist.md`](terraform-remote-state-security-checklist.md)
 
 ---
 
@@ -911,6 +1051,29 @@ environment.
 
 CI/CD systems also provide execution history through Jenkins and GitHub
 Actions.
+
+### Security monitoring limitations
+
+This challenge environment does not implement a complete security detection and
+response platform.
+
+The following controls are not currently implemented as dedicated project
+controls:
+
+```text
+CloudTrail S3 data-event monitoring for Terraform state access
+Amazon GuardDuty
+AWS Security Hub
+VPC Flow Logs
+centralized SIEM ingestion
+automated security alerting / incident paging
+```
+
+Their absence should not be interpreted as a recommendation to omit them from a
+production environment.
+
+The current environment provides application and deployment visibility, but not
+full account-level threat detection.
 
 ---
 
@@ -1068,7 +1231,7 @@ This demonstrates why least privilege on CI/CD identities matters.
 
 ---
 
-## Scenario: GitHub deployment credential is exposed
+## Scenario: Jenkins GitHub repository credential is exposed
 
 The Jenkins GitHub credential is scoped to repository source access.
 
@@ -1078,6 +1241,43 @@ Exposure therefore represents a source-control security issue rather than
 automatic AWS account administrator access.
 
 The credential should still be revoked immediately.
+
+---
+
+## Scenario: GitHub Actions OIDC trust is abused
+
+GitHub Actions does not store a long-lived AWS deployment key.
+
+A workflow must first satisfy the AWS role's OIDC trust policy.
+
+The trust relationship is restricted by:
+
+```text
+audience
+repository identity
+gitops branch
+```
+
+If an attacker gains control of an authorized GitHub workflow or otherwise
+satisfies those trusted claims, the assumed role can still exercise its permitted
+deployment authority.
+
+The expected blast radius is limited to the permissions granted to the GitHub
+Actions deployment role, including project image publication and deployment of
+the two application ECS services.
+
+It should not automatically grant Terraform-state access or unrestricted AWS
+administrative authority.
+
+Response actions would include:
+
+```text
+disable or tighten the role trust policy
+review repository and workflow changes
+review AWS role-assumption activity
+rotate or remove any affected repository secrets
+restore a known-good workflow revision
+```
 
 ---
 
@@ -1119,7 +1319,71 @@ the state does not contain obvious plaintext credentials.
 
 ---
 
-# 27. Intentional Challenge Tradeoffs
+# 27. Credential Lifecycle and Revocation
+
+Temporary credentials reduce the exposure window of stolen AWS credentials, but
+identity compromise still requires an operational response.
+
+## Jenkins GitHub repository credential
+
+If the fine-grained GitHub credential used for Jenkins checkout is exposed:
+
+```text
+revoke the token
+issue a replacement credential
+update Jenkins Credentials
+review repository access logs and recent changes
+```
+
+The credential is used for source checkout and is not an AWS credential.
+
+## Jenkins EC2 workload identity
+
+If the Jenkins host or its instance-profile credentials are suspected to be
+compromised:
+
+```text
+isolate or stop the Jenkins instance
+review AWS API activity performed by the Jenkins role
+review recent ECR images and ECS task-definition revisions
+replace the instance if host integrity cannot be established
+tighten or temporarily disable the IAM role if required
+```
+
+Because instance-profile credentials are temporary, there is no static AWS
+access key stored on the host to rotate.
+
+## GitHub Actions OIDC identity
+
+If the GitOps trust path is suspected to be compromised:
+
+```text
+disable or restrict the AWS role trust policy
+review the repository and workflow history
+review AWS STS role-assumption activity
+restore known-good workflow code
+verify the deployed ECS task definitions and ECR images
+```
+
+The primary control point is the AWS trust policy rather than rotation of a
+stored AWS secret.
+
+## Terraform operator access
+
+If the Terraform source identity or execution-role access is suspected to be
+compromised:
+
+```text
+disable or revoke the source identity
+review Terraform state access
+review infrastructure-changing API activity
+verify the current Terraform plan against real infrastructure
+restore state from a known-good version if integrity is in doubt
+```
+
+---
+
+# 28. Intentional Challenge Tradeoffs
 
 Some controls are intentionally weaker than a production implementation.
 
@@ -1210,7 +1474,35 @@ the broader security model.
 
 ---
 
-# 28. Security Responsibility Summary
+# 29. Security Controls vs Residual Risks
+
+| Area | Implemented Control | Residual Risk |
+|---|---|---|
+| Internet ingress | ALB is the only public application entry point; tasks have no public IPs | External application traffic uses HTTP rather than HTTPS |
+| ECS tasks | Private subnets, ALB-only ingress, separate security groups | Tasks retain NAT-based outbound access |
+| Jenkins | EC2 instance profile, IMDSv2, encrypted EBS, SSH `/32` restriction | Jenkins UI/webhook endpoint is publicly reachable on TCP/8080 |
+| GitHub Actions | OIDC federation with repository/branch trust restrictions | A compromised authorized workflow can still exercise the role's scoped deployment authority |
+| Container artifacts | Separate ECR repositories, immutable tags, Trivy gate | No cryptographic image signing or provenance enforcement |
+| Terraform state | Encryption, TLS enforcement, versioning, locking, public-access blocking | No dedicated state-access security alerting is implemented |
+| Checkov | Terraform findings are surfaced in CI | `--soft-fail` does not technically block infrastructure changes |
+| Logging | Separate ECS log groups and CI/CD execution history | No centralized SIEM or full account-level threat detection |
+| Availability | Multi-AZ network and Application Auto Scaling | Baseline desired count of one task per service is not full workload redundancy |
+
+The security posture should therefore be read as:
+
+```text
+implemented controls
+        +
+known limitations
+        +
+documented residual risk
+```
+
+rather than as a claim of complete production-grade security.
+
+---
+
+# 30. Security Responsibility Summary
 
 ```text
 Internet-facing application access
@@ -1259,9 +1551,13 @@ Application logs
     -> CloudWatch Logs
 ```
 
+Detailed IAM authorization evidence is documented in:
+
+[`iam-permissions-matrix.md`](iam-permissions-matrix.md)
+
 ---
 
-# 29. Learning Summary
+# 31. Learning Summary
 
 The most important security lesson from this architecture is that security is
 not provided by one AWS service.

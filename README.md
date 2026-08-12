@@ -115,6 +115,24 @@ ALB security group.
 
 ---
 
+## Security Highlights
+
+- **No static AWS deployment credentials** — Jenkins uses an EC2 instance
+  profile and GitHub Actions uses OIDC federation with AWS STS.
+- **Repository- and branch-scoped GitHub OIDC trust** — the GitOps deployment
+  role can be assumed only by the intended repository's `gitops` branch.
+- **Least-privilege deployment roles** — Jenkins and GitHub Actions can deploy
+  only the two application services and pass only the frontend/backend ECS
+  execution roles.
+- **Private Fargate workloads** — frontend and backend tasks have no public IP
+  and accept application traffic only from the ALB security group.
+- **Immutable, scanned container artifacts** — ECR tags are immutable and
+  Jenkins blocks deployment on fixable HIGH/CRITICAL Trivy findings.
+- **Protected Terraform state** — encrypted, versioned S3 state with public
+  access blocking, TLS enforcement, and S3-native state locking.
+
+---  
+
 # Availability and Failure-Domain Design
 
 The network spans two Availability Zones.
