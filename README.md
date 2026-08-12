@@ -55,17 +55,22 @@ when frontend-to-backend communication is working.
 - **Infrastructure as Code** — Terraform provisions the two-AZ VPC, ALB,
   ECS/Fargate services, Application Auto Scaling, ECR, IAM, CloudWatch, and
   Jenkins infrastructure.
+
 - **Automated CI/CD** — GitHub webhooks trigger Jenkins to build, scan, publish,
   deploy, wait for ECS stability, and validate the live application.
+
 - **Security-focused delivery** — Checkov provides IaC findings, Trivy blocks
   fixable HIGH/CRITICAL container findings, ECR tags are immutable, and AWS
   deployment credentials are temporary.
+
 - **Least-privilege identity boundaries** — Jenkins uses EC2
   instance-profile-based temporary AWS credentials, GitHub Actions uses OIDC
   federation to AWS STS, and frontend/backend workloads use separate execution
   roles with no application task role.
+
 - **Private application runtime** — Fargate tasks run without public IPs and
   accept application traffic only from the ALB security group.
+  
 - **Validated scaling** — CPU target tracking scales each ECS service between
   1 and 4 tasks; controlled load testing demonstrated backend scale-out from
   1 to 2 running tasks.
