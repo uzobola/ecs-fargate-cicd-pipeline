@@ -898,14 +898,14 @@ Key locations:
 
 [Jenkins pipeline](docs/Implementation-Guide/phase-05-jenkins-cicd.md)
 [Jenkins Ansible configuration](ansible/jenkins.yml)
-[Terraform Infrastructure](terraform/bootstrap/)
-[Terraform Infrastructure](terraform/infrastructure/)
+[Terraform remote-state bootstrap](terraform/bootstrap/)
+[Terraform application infrastructure](terraform/infrastructure/)
 [Architecture](docs/architecture.md)
 [Design Decisions](docs/design-decisions.md)
 [Security Model](docs/security-model.md)
-IAM Permissions Matrix
+[IAM Permissions Matrix](docs/iam-permissions-matrix.md)
 [Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
-[Cleanup and Teardown](docs/clean-up.md)
+[Cleanup and Teardown](docs/cleanup.md)
 [Implementation Guide](docs/Implementation-Guide/)
 
 ---
