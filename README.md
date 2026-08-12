@@ -1,10 +1,10 @@
-# AWS ECS Fargate CI/CD Tech Challenge
+# Secure AWS ECS Fargate CI/CD Platform
+
+A two-service application deployed to AWS ECS Fargate with Terraform,
+automated Jenkins CI/CD, container security gates, immutable ECR delivery,
+runtime validation, and CPU-based Application Auto Scaling.
 
 ## Overview
-
-This project deploys a two-service web application to AWS ECS Fargate and
-implements an automated Jenkins CI/CD pipeline for container build, security
-validation, image publication, ECS deployment, and live application validation.
 
 The application consists of:
 
@@ -39,46 +39,32 @@ when frontend-to-backend communication is working.
 
 ---
 
-# Implementation Status
+## What This Demonstrates
 
-- [x] Local application validation
-- [x] Backend `/health` endpoint
-- [x] Environment-aware application configuration
-- [x] Backend containerization
-- [x] Frontend multi-stage containerization
-- [x] Non-root container runtimes
-- [x] Local path-routing integration validation
-- [x] Terraform remote-state bootstrap
-- [x] Amazon ECR repositories
-- [x] Two-AZ VPC architecture
-- [x] Public/private subnet separation
-- [x] One NAT Gateway per Availability Zone
-- [x] Application Load Balancer
-- [x] Path-based `/api` routing
-- [x] ECS Fargate cluster
-- [x] Frontend ECS service
-- [x] Backend ECS service
-- [x] ECS task-definition CPU/memory configuration
-- [x] Application Auto Scaling configuration
-- [x] 50% CPU target-tracking policy
-- [x] Jenkins infrastructure through Terraform
-- [x] Jenkins host configuration through Ansible
-- [x] Jenkins pipeline from SCM
-- [x] Checkov Terraform scanning
-- [x] Trivy container security gate
-- [x] Immutable ECR image tagging
-- [x] Automated ECS deployment
-- [x] ECS steady-state validation
-- [x] Live post-deployment validation
-- [x] GitHub webhook-triggered Jenkins builds
-- [x] Auto Scaling load-test evidence
-- [x] GitHub Actions GitOps bonus
+- **Infrastructure as Code** — Terraform provisions the two-AZ VPC, ALB,
+  ECS/Fargate services, Application Auto Scaling, ECR, IAM, CloudWatch, and
+  Jenkins infrastructure.
+- **Automated CI/CD** — GitHub webhooks trigger Jenkins to build, scan, publish,
+  deploy, wait for ECS stability, and validate the live application.
+- **Security-focused delivery** — Checkov provides IaC findings, Trivy blocks
+  fixable HIGH/CRITICAL container findings, ECR tags are immutable, and AWS
+  deployment credentials are temporary.
+- **Least-privilege identity boundaries** — Jenkins uses EC2
+  instance-profile-based temporary AWS credentials, GitHub Actions uses OIDC
+  federation to AWS STS, and frontend/backend workloads use separate execution
+  roles with no application task role.
+- **Private application runtime** — Fargate tasks run without public IPs and
+  accept application traffic only from the ALB security group.
+- **Validated scaling** — CPU target tracking scales each ECS service between
+  1 and 4 tasks; controlled load testing demonstrated backend scale-out from
+  1 to 2 running tasks.
 
 ---
 
 # Architecture
 
-## AWS application architecture
+For the full runtime, network, identity, scaling, and control-plane model, see
+[Architecture](docs/architecture.md).
 
 ```text
                             Internet
@@ -106,34 +92,143 @@ when frontend-to-backend communication is working.
                     Internet Gateway
 ```
 
-The application tasks run in private subnets.
+Core runtime characteristics:
 
-The public ALB is the only internet-facing application entry point.
-
-Frontend and backend security groups permit application traffic only from the
-ALB security group.
+- the ALB is the public application entry point
+- frontend and backend tasks run in private subnets
+- tasks do not receive public IP addresses
+- frontend ingress on TCP/3000 is allowed only from the ALB security group
+- backend ingress on TCP/8080 is allowed only from the ALB security group
+- the browser reaches the backend through the ALB `/api` route rather than a
+  direct frontend-to-backend network path
+- each task uses `512` CPU units and `1024 MiB` memory
+- each ECS service has independent CPU target tracking from 1 to 4 tasks at a
+  50% target
 
 ---
 
-## Security Highlights
+# CI/CD Delivery Flow
 
-- **No static AWS deployment credentials** — Jenkins uses an EC2 instance
-  profile and GitHub Actions uses OIDC federation with AWS STS.
-- **Repository- and branch-scoped GitHub OIDC trust** — the GitOps deployment
-  role can be assumed only by the intended repository's `gitops` branch.
-- **Least-privilege deployment roles** — Jenkins and GitHub Actions can deploy
-  only the two application services and pass only the frontend/backend ECS
-  execution roles.
-- **Private Fargate workloads** — frontend and backend tasks have no public IP
-  and accept application traffic only from the ALB security group.
-- **Immutable, scanned container artifacts** — ECR tags are immutable and
-  Jenkins blocks deployment on fixable HIGH/CRITICAL Trivy findings.
-- **Protected Terraform state** — encrypted, versioned S3 state with public
-  access blocking, TLS enforcement, and S3-native state locking.
+The primary deployment path is Jenkins on the `main` branch.
 
----  
+```text
+GitHub push
+    |
+    v
+GitHub webhook
+    |
+    v
+Jenkins
+    |
+    v
+Checkout
+    |
+    v
+Verify AWS Identity
+    |
+    v
+Checkov IaC Scan
+    |
+    v
+Build Frontend + Backend Images
+    |
+    v
+Trivy HIGH/CRITICAL Security Gate
+    |
+    v
+Authenticate to ECR
+    |
+    v
+Push Immutable Images
+    |
+    v
+Register ECS Task-Definition Revisions
+    |
+    v
+Update ECS Services
+    |
+    v
+Wait for ECS Stability
+    |
+    v
+Validate / and /api through the ALB
+```
 
-# Availability and Failure-Domain Design
+Jenkins does not consider a deployment successful merely because
+`UpdateService` was accepted.
+
+The pipeline waits for both ECS services to become stable and then verifies:
+
+```text
+GET /      -> HTTP 200
+GET /api   -> non-empty GUID response
+```
+
+Jenkins authenticates to AWS with an EC2 instance profile. No long-lived AWS
+access key is stored in Jenkins.
+
+---
+
+# Security Controls
+
+| Control | Implementation | Evidence |
+|---|---|---|
+| AWS deployment identity | Jenkins uses EC2 instance-profile temporary credentials; no static AWS keys | `Jenkinsfile`, IAM permissions matrix |
+| GitOps authentication | GitHub Actions uses OIDC federation to AWS STS with repository- and branch-scoped trust | Security model, GitOps IAM |
+| Container release gate | Trivy blocks fixable HIGH/CRITICAL findings | `docs/evidence/trivy-security-gate.md` |
+| IaC security review | Checkov runs before application deployment with documented soft-fail governance | `Jenkinsfile`, security model |
+| Artifact integrity | Immutable ECR tags are derived from source revision and build/run identity | ECR configuration, task definitions |
+| Network isolation | ALB is public; Fargate tasks are private with ALB-only ingress | Architecture, security model |
+| Terraform state | Encrypted, versioned, TLS-only, public access blocked, S3-native locking | Remote-state security checklist |
+| Deployment authorization | CI/CD can deploy only the project services and pass only the application execution roles | IAM permissions matrix |
+
+For the full trust-boundary, identity and residual-risk
+see [Security Model](docs/security-model.md).
+
+---
+
+# Verified Outcomes
+
+## Application
+
+```text
+Frontend /    -> HTTP 200
+Backend /api  -> GUID
+Browser       -> SUCCESS: <GUID>
+```
+
+## Container Security Gate
+
+```text
+Initial backend Trivy scan -> 11 HIGH / 1 CRITICAL
+Pipeline                    -> blocked
+Remediation                 -> runtime/dependency hardening
+Rerun                       -> 0 frontend / 0 backend findings
+Deployment                  -> continued only after pass
+```
+
+The failure, remediation, and passing evidence is documented in:
+
+[Trivy Security-Gate Evidence](docs/evidence/trivy-security-gate.md)
+
+## Auto Scaling
+
+```text
+Backend desired count -> 1 to 2
+Backend running tasks -> 1 to 2
+Scaling activity      -> Successful
+```
+
+The load methodology and CloudWatch/Application Auto Scaling evidence
+are documented in:
+
+[Phase 7: Auto Scaling Validation](docs/Implementation-Guide/phase-07-autoscaling-validation.md)
+
+---
+
+# Application and Infrastructure Design
+
+## Availability and Failure Domains
 
 The network spans two Availability Zones.
 
@@ -149,14 +244,6 @@ Each AZ contains:
 Each private subnet routes outbound traffic through the NAT Gateway in the same
 Availability Zone.
 
-This improves:
-
-- Availability Zone independence
-- failure-domain separation
-- private-egress availability
-- fault isolation
-- blast-radius reduction
-
 The ALB spans both public subnets.
 
 The challenge requires:
@@ -167,46 +254,13 @@ Desired tasks: 1
 Maximum tasks: 4
 ```
 
-A desired count of one means the complete application should not be described as
-fully fault tolerant. A single running task can still produce a temporary
-interruption during failure or replacement.
+A desired count of one means the application should not be described as fully
+fault tolerant at the workload level. A single running task can still produce a
+temporary interruption during failure or replacement.
 
----
-
-# ECS Fargate Configuration
-
-Both services run on AWS Fargate.
-
-Each task is configured with:
-
-```text
-CPU:     512 units / 0.5 vCPU
-Memory:  1024 MiB / 1 GiB
-```
-
-Application Auto Scaling is configured with:
-
-```text
-Minimum capacity: 1
-Desired capacity: 1
-Maximum capacity: 4
-
-Target metric:
-ECSServiceAverageCPUUtilization
-
-Target:
-50%
-```
-
-The frontend and backend have independent scaling policies.
-
----
-
-# Application Load Balancer Routing
+## Application Load Balancer Routing
 
 One public Application Load Balancer exposes both services.
-
-Routing rules:
 
 ```text
 /api
@@ -215,7 +269,6 @@ Routing rules:
     v
 Backend target group
 HTTP/8080
-
 
 everything else
     |
@@ -227,30 +280,39 @@ HTTP/3000
 Health checks:
 
 ```text
-Frontend:
-/
-
-Backend:
-/health
+Frontend: /
+Backend:  /health
 ```
 
-The frontend uses the relative path:
+The frontend uses the relative path `/api` rather than embedding an
+environment-specific backend hostname, so the browser uses one public
+application origin.
+
+## ECS Fargate
+
+Both services run on AWS Fargate.
+
+Each task is configured with:
 
 ```text
-/api
+CPU:     512 units / 0.5 vCPU
+Memory:  1024 MiB / 1 GiB
 ```
 
-rather than embedding an environment-specific backend hostname.
+Application Auto Scaling is configured independently for each service:
 
-This allows the browser to use one public application origin.
+```text
+Minimum capacity: 1
+Maximum capacity: 4
+Target metric:    ECSServiceAverageCPUUtilization
+Target:           50%
+```
 
----
+## Container Images
 
-# Container Images
+### Frontend
 
-## Frontend
-
-The frontend uses a multi-stage Docker build:
+The frontend uses a multi-stage build:
 
 ```text
 Node.js 16.20.2
@@ -271,24 +333,19 @@ The final container serves static files through unprivileged Nginx on port
 The legacy Node version is retained solely to support the supplied
 `react-scripts 4.0.3` build environment.
 
-## Backend
+### Backend
 
-The backend uses a multi-stage runtime image.
+The backend also uses a multi-stage runtime image.
 
-The dependency stage contains Node/npm for package installation.
+The dependency stage contains Node/npm for dependency installation.
 
 The final runtime contains only the components required to execute the
-application.
+application and runs as a non-root user on port `8080`.
 
-The backend runs as a non-root user on port `8080`.
+The runtime was hardened after the Trivy gate detected HIGH and CRITICAL
+findings in unnecessary runtime tooling and older application dependencies.
 
-This reduced runtime image was introduced after the Trivy pipeline gate detected
-HIGH and CRITICAL vulnerabilities in unnecessary runtime tooling and older
-application dependencies.
-
----
-
-# Amazon ECR
+## Amazon ECR
 
 Separate repositories are used:
 
@@ -306,7 +363,7 @@ ECR Basic vulnerability scanning
 registry-level SCAN_ON_PUSH rule
 ```
 
-Pipeline image tags use:
+Jenkins image tags use:
 
 ```text
 <12-character-git-commit>-<jenkins-build-number>
@@ -318,88 +375,90 @@ Example:
 e0ac840b5856-3
 ```
 
-This provides both source traceability and build uniqueness.
+This provides source traceability and build uniqueness.
 
----
+## Infrastructure Ownership
 
-# Terraform
-
-Infrastructure is managed under:
+The project deliberately separates ownership:
 
 ```text
-terraform/
-├── bootstrap/
-└── infrastructure/
-```
+Terraform
+    -> infrastructure and baseline services
 
-## Remote state bootstrap
+Ansible
+    -> Jenkins host configuration
 
-The bootstrap configuration creates the Terraform S3 backend.
+Jenkins / GitHub Actions
+    -> deployed ECS task-definition revisions
 
-Controls include:
-
-```text
-S3 object versioning
-SSE-S3 encryption
-S3-native state locking
-bucket-owner-enforced ownership
-S3 Block Public Access
-TLS-only bucket policy
-```
-
-State objects:
-
-```text
-bootstrap/terraform.tfstate
-infrastructure/terraform.tfstate
-```
-
-## Main infrastructure
-
-Terraform manages:
-
-```text
-VPC
-public/private subnets
-Internet Gateway
-NAT Gateways
-route tables
-security groups
-ECR repositories
-Application Load Balancer
-target groups
-listener rules
-ECS cluster
-task definitions
-ECS services
-CloudWatch log groups
-IAM execution roles
 Application Auto Scaling
-Jenkins EC2 infrastructure
-Jenkins IAM role
-Jenkins security group
-Elastic IP
+    -> ECS service desired count
+
+ECS
+    -> service health and deployment reconciliation
 ```
+
+Terraform ignores runtime-managed `desired_count` and deployed
+`task_definition` changes on the ECS services so it does not fight legitimate
+Auto Scaling or CI/CD activity.
 
 ---
 
-# Terraform Authentication
+# Reproduce the Environment
 
-Terraform commands are executed through `aws-vault`:
+The commands below provide the primary deployment path. Detailed phase-by-phase
+replication instructions are available in the
+[Implementation Guide](docs/Implementation-Guide/).
+
+## Prerequisites
+
+The original implementation used:
+
+```text
+Terraform
+AWS CLI
+AWS Vault
+Docker
+Git
+Ansible
+```
+
+Terraform and AWS CLI commands are executed through:
 
 ```bash
 aws-vault exec terraform -- <command>
 ```
 
-The Terraform profile assumes a dedicated Terraform execution role.
+Before provisioning, verify the active identity:
 
-No AWS credentials are stored in this repository.
+```bash
+aws-vault exec terraform -- \
+  aws sts get-caller-identity
+```
 
----
+## 1. Validate the Application Locally
 
-# Terraform Deployment
+Build the backend:
 
-## 1. Bootstrap remote state
+```bash
+docker build \
+  -t tc1-backend:local \
+  ./backend
+```
+
+Build the frontend:
+
+```bash
+docker build \
+  -t tc1-frontend:local \
+  ./frontend
+```
+
+Local path-routing validation is documented in:
+
+[Phase 2: Containerization and Local Validation](docs/Implementation-Guide/phase-02-containerization-local-validation.md)
+
+## 2. Bootstrap Terraform Remote State
 
 Initialize:
 
@@ -424,21 +483,45 @@ aws-vault exec terraform -- \
   bootstrap.tfplan
 ```
 
-## 2. Initialize the main infrastructure
+The remote-state bucket uses:
+
+```text
+S3 Versioning
+SSE-S3 encryption
+S3-native state locking
+BucketOwnerEnforced object ownership
+S3 Block Public Access
+TLS-only bucket policy
+```
+
+State keys:
+
+```text
+bootstrap/terraform.tfstate
+infrastructure/terraform.tfstate
+```
+
+For detailed validation and recovery controls, see:
+
+[Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
+
+## 3. Provision the Main Infrastructure
+
+Initialize:
 
 ```bash
 aws-vault exec terraform -- \
   terraform -chdir=terraform/infrastructure init
 ```
 
-## 3. Validate
+Validate:
 
 ```bash
 aws-vault exec terraform -- \
   terraform -chdir=terraform/infrastructure validate
 ```
 
-## 4. Plan
+Plan:
 
 ```bash
 aws-vault exec terraform -- \
@@ -446,9 +529,9 @@ aws-vault exec terraform -- \
   -out=infrastructure.tfplan
 ```
 
-Review the plan before applying it.
+Review the saved plan before applying it.
 
-## 5. Apply
+Apply:
 
 ```bash
 aws-vault exec terraform -- \
@@ -456,9 +539,7 @@ aws-vault exec terraform -- \
   infrastructure.tfplan
 ```
 
-## 6. Verify convergence
-
-After deployment:
+Verify convergence:
 
 ```bash
 aws-vault exec terraform -- \
@@ -471,11 +552,14 @@ Expected:
 No changes. Your infrastructure matches the configuration.
 ```
 
----
+Terraform manages the VPC, public/private subnets, Internet Gateway, NAT
+Gateways, route tables, security groups, ECR, ALB, target groups, listener
+rules, ECS cluster/services/task definitions, CloudWatch log groups, IAM
+execution roles, Application Auto Scaling, and Jenkins EC2 infrastructure.
 
-# Jenkins Infrastructure
+## 4. Configure Jenkins with Ansible
 
-Jenkins runs natively on an Amazon Linux 2023 EC2 instance.
+Jenkins runs natively on Amazon Linux 2023.
 
 ```text
 Instance type: c7i-flex.large
@@ -484,18 +568,10 @@ Memory:        4 GiB
 Root disk:     30 GiB encrypted gp3
 ```
 
-Terraform provisions:
+Terraform provisions the EC2 instance, Elastic IP, security group, SSH public
+key registration, IAM role, and instance profile.
 
-```text
-EC2 instance
-Elastic IP
-security group
-SSH public key registration
-IAM role
-instance profile
-```
-
-Ansible configures:
+Ansible installs and configures:
 
 ```text
 Java 21
@@ -508,91 +584,7 @@ Trivy
 Checkov
 ```
 
-This gives a clear ownership boundary:
-
-```text
-Terraform
-    -> infrastructure
-
-Ansible
-    -> host configuration
-
-Jenkinsfile
-    -> deployment workflow
-```
-
----
-
-# Jenkins Network Controls
-
-Inbound:
-
-```text
-TCP/22
-    administrator public IP /32
-
-TCP/8080
-    public
-```
-
-Outbound:
-
-```text
-TCP/443
-    GitHub
-    AWS APIs
-    ECR
-    package/tool repositories
-
-TCP/80
-    deployed ALB validation
-```
-
-TCP/8080 is public for challenge grading and GitHub webhook delivery.
-
-A production environment should normally place Jenkins behind HTTPS and use a
-stronger administrative access model.
-
----
-
-# Jenkins AWS Authentication
-
-Jenkins uses an EC2 instance profile.
-
-```text
-Jenkins
-   |
-   v
-EC2 metadata / temporary STS credentials
-   |
-   v
-ecs-fargate-cicd-challenge-jenkins-role
-```
-
-No long-lived AWS access key is stored in Jenkins.
-
-The role is scoped to the deployment operations required by the pipeline:
-
-```text
-ECR authentication
-ECR image publication
-ECS task-definition operations
-ECS service deployment
-iam:PassRole for the application execution roles
-read-only ALB discovery
-```
-
----
-
-# Jenkins Host Configuration with Ansible
-
-The committed configuration is:
-
-```text
-ansible/jenkins.yml
-```
-
-Example execution:
+Run:
 
 ```bash
 ansible-playbook \
@@ -602,111 +594,14 @@ ansible-playbook \
   ansible/jenkins.yml
 ```
 
-The playbook can be rerun to confirm configuration convergence.
-
----
-
-# Jenkins CI/CD Pipeline
-
-The pipeline definition is committed as:
+Jenkins network access:
 
 ```text
-Jenkinsfile
+TCP/22   -> approved administrator IPv4 /32
+TCP/8080 -> public for challenge grading and GitHub webhook delivery
 ```
 
-The Jenkins job uses:
-
-```text
-Pipeline script from SCM
-```
-
-Pipeline flow:
-
-```text
-Checkout
-    |
-    v
-Verify AWS Identity
-    |
-    v
-Checkov IaC Scan
-    |
-    v
-Build Images
-    |
-    v
-Trivy Image Security Gate
-    |
-    v
-Authenticate to ECR
-    |
-    v
-Push Immutable Images
-    |
-    v
-Register Task Definitions
-    |
-    v
-Deploy to ECS
-    |
-    v
-Wait for Stable Services
-    |
-    v
-Validate Live Application
-```
-
-The pipeline does not declare deployment success immediately after
-`UpdateService`.
-
-It waits for ECS to report both services stable.
-
-It then queries the live ALB and confirms:
-
-```text
-GET /      -> HTTP 200
-GET /api   -> GUID response
-```
-
----
-
-# Security Gates
-
-## Checkov
-
-Checkov scans the Terraform configuration during the Jenkins pipeline.
-
-It currently runs as a reporting control with:
-
-```text
---soft-fail
-```
-
-Findings are reviewed rather than blindly remediated during the challenge.
-
-## Trivy
-
-Trivy scans both built images for:
-
-```text
-HIGH
-CRITICAL
-```
-
-fixable vulnerabilities.
-
-The pipeline uses an exit code that blocks deployment when such findings are
-detected.
-
-This control was tested during implementation when an earlier backend image
-failed the security gate.
-
-The backend runtime and dependencies were corrected before deployment
-continued.
-
----
-
-# GitHub Integration
+## 5. Configure GitHub Integration
 
 The source repository is private.
 
@@ -720,10 +615,10 @@ Permission:
 Contents - Read-only
 ```
 
-The token is stored in Jenkins Credentials and is not committed to Git.
+The token is stored in Jenkins Credentials and is used for repository checkout,
+not AWS authentication.
 
-A GitHub webhook triggers the Jenkins pipeline after pushes to the configured
-branch.
+A GitHub webhook triggers the Jenkins job after pushes to the configured branch.
 
 Webhook endpoint shape:
 
@@ -731,39 +626,26 @@ Webhook endpoint shape:
 http://<jenkins-eip>:8080/github-webhook/
 ```
 
----
+## 6. Deploy Through Jenkins
 
-# Local Docker Validation
-
-Docker validation is performed from the repository root.
-
-Build backend:
-
-```bash
-docker build \
-  -t tc1-backend:local \
-  ./backend
-```
-
-Build frontend:
-
-```bash
-docker build \
-  -t tc1-frontend:local \
-  ./frontend
-```
-
-The detailed local container and path-routing validation procedure is documented
-in:
+The Jenkins job uses:
 
 ```text
-Detailed phase-by-phase replication instructions:
-[`docs/Implementation-Guide/`](docs/Implementation-Guide/)
+Pipeline script from SCM
 ```
 
----
+The committed pipeline is:
 
-# Application Validation
+```text
+Jenkinsfile
+```
+
+The pipeline verifies AWS identity, runs Checkov, builds both images, enforces
+the Trivy gate, pushes immutable images to ECR, registers new task-definition
+revisions, updates the ECS services, waits for stability, and validates the
+live application.
+
+## 7. Validate the Live Application
 
 Retrieve the ALB hostname:
 
@@ -785,32 +667,179 @@ Backend:
 curl -i "http://<alb-dns>/api"
 ```
 
-Browser result:
+Expected browser result:
 
 ```text
 SUCCESS: <GUID>
 ```
 
----
+## 8. Validate Auto Scaling
 
-# Auto Scaling
-
-Both ECS services use target-tracking scaling based on:
+Both services use:
 
 ```text
 ECSServiceAverageCPUUtilization = 50%
+Minimum capacity = 1
+Maximum capacity = 4
 ```
 
-Capacity limits:
+The backend policy was validated using a controlled load against `GET /api`.
+
+Final test:
 
 ```text
-Minimum: 1
-Maximum: 4
+Rate:     1,800 requests/second
+Duration: 5 minutes
+Source:   Jenkins EC2 host
 ```
 
-Measured load-test results and scaling evidence are documented in:
+Observed:
+
+```text
+Desired: 1 -> 2
+Running: 1 -> 2
+Scaling activity: Successful
+```
+
+Detailed methodology and evidence:
 
 [Phase 7: Auto Scaling Validation](docs/Implementation-Guide/phase-07-autoscaling-validation.md)
+
+## 9. Clean Up
+
+The environment has a dependency-aware teardown procedure.
+
+See:
+
+[Cleanup and Teardown](docs/cleanup.md)
+
+The main infrastructure should be destroyed before the bootstrap state bucket,
+and GitOps IAM should be destroyed before the main application resources it
+references.
+
+---
+
+# Bonus: GitHub Actions GitOps Alternative
+
+A GitHub Actions CI/CD alternative is implemented on the `gitops`
+branch.
+
+The required Jenkins implementation remains on `main`.
+
+```text
+GitHub push to gitops
+        |
+        v
+GitHub Actions
+        |
+        | OIDC
+        v
+AWS STS
+        |
+        v
+temporary role credentials
+        |
+        v
+Build frontend/backend images
+        |
+        v
+Push immutable images to ECR
+        |
+        v
+Register new ECS task-definition revisions
+        |
+        v
+Deploy frontend/backend services
+        |
+        v
+Wait for ECS stability
+        |
+        v
+Validate the live application
+```
+
+The AWS trust relationship is restricted to the immutable identity of this
+repository and the `gitops` branch.
+
+No static AWS access keys are stored in GitHub.
+
+The GitOps IAM configuration is managed separately under:
+
+```text
+terraform/gitops-iam/
+```
+
+---
+
+# Challenge Tradeoffs and Production Improvements
+
+The following decisions are intentional for the timed challenge and are
+documented rather than presented as ideal production defaults.
+
+## HTTP-only ALB
+
+Current:
+
+```text
+HTTP/80
+```
+
+Production improvement:
+
+```text
+HTTPS/443
+ACM-managed certificate
+HTTP -> HTTPS redirect
+```
+
+## Public Jenkins TCP/8080
+
+Jenkins TCP/8080 is publicly reachable for challenge grading and GitHub webhook
+delivery.
+
+A production Jenkins deployment should normally use HTTPS and a more restricted
+administrative entry point.
+
+## Single Jenkins Controller / Build Host
+
+The Jenkins EC2 instance is both controller and build host.
+
+This is a CI/CD single point of failure.
+
+Its failure does not stop the already-running ECS application, but it removes
+deployment capability until Jenkins is restored.
+
+A production design would normally use isolated or ephemeral build agents.
+
+## Docker-Group Access
+
+The Jenkins service account belongs to the Docker group so it can build
+containers.
+
+This provides significant privilege on the Jenkins host.
+
+A stronger production design would isolate Docker build execution from the
+controller.
+
+## NAT-Based AWS Service Access
+
+Private Fargate tasks use NAT Gateways for required outbound AWS-service access.
+
+A more isolated production architecture could evaluate VPC endpoints for ECR,
+CloudWatch Logs, and S3.
+
+## Desired ECS Task Count of One
+
+The scaling range meets the challenge requirement:
+
+```text
+minimum = 1
+desired = 1
+maximum = 4
+```
+
+The baseline desired count of one does not provide full workload-level
+redundancy.
 
 ---
 
@@ -845,17 +874,11 @@ Measured load-test results and scaling evidence are documented in:
 └── docs/
     ├── architecture.md
     ├── design-decisions.md
+    ├── security-model.md
+    ├── iam-permissions-matrix.md
+    ├── terraform-remote-state-security-checklist.md
+    ├── cleanup.md
     ├── Implementation-Guide/
-    │   ├── README.md
-    │   ├── phase-02-containerization-local-validation.md
-    │   ├── phase-03-a-bootstrap-env-infrastructure.md
-    │   ├── phase-03-b-aws-network-edge-infrastructure.md
-    │   ├── phase-03-c-ecs-fargate-app-autoscaling.md
-    │   ├── phase-03-ecr-artifact-foundation-and-publication.md
-    │   ├── phase-04-jenkins-infrastructure.md
-    │   ├── phase-05-jenkins-cicd.md
-    │   ├── phase-06-end-to-end-validation.md
-    │   └── phase-07-autoscaling-validation.md
     └── evidence/
 ```
 
@@ -897,8 +920,8 @@ security validation:
 
 ## Operations
 
-Environment teardown, state backup, dependency-aware destruction, and final
-AWS cleanup:
+Environment teardown, state backup, dependency-aware destruction, and final AWS
+cleanup:
 
 [Cleanup and Teardown](docs/cleanup.md)
 
@@ -908,234 +931,39 @@ Deployment, security-gate, infrastructure, CI/CD, and Auto Scaling evidence:
 
 [Evidence](docs/evidence/)
 
-
 ---
 
-# Current Production-Like Tradeoffs
+# Challenge Requirements Coverage
 
-The following decisions are intentional for this timed challenge and are
-documented rather than presented as ideal production defaults:
-
-### HTTP-only ALB
-
-The application currently uses HTTP/80.
-
-A production deployment should normally terminate TLS at the ALB with an ACM
-certificate and redirect HTTP to HTTPS.
-
-### Public Jenkins TCP/8080
-
-Required for external grading and webhook delivery.
-
-A production Jenkins deployment should normally use HTTPS and a more restricted
-administrative entry point.
-
-### Single Jenkins controller/build host
-
-The Jenkins EC2 instance is both controller and build host.
-
-It is a CI/CD single point of failure.
-
-Its failure does not stop the already-running ECS application, but it removes
-deployment capability until Jenkins is restored.
-
-### Docker-group access
-
-The Jenkins service account belongs to the Docker group so it can build
-containers.
-
-This grants significant privilege on the Jenkins host.
-
-A production design should normally use isolated build agents.
-
-### Desired ECS task count of one
-
-The configured scaling range meets the challenge requirement, but the baseline
-desired count of one does not provide full workload-level redundancy.
-
----
-
-# Bonus: GitHub Actions GitOps Alternative
-
-A complete GitHub Actions CI/CD alternative is implemented on the `gitops`
-branch.
-
-The required Jenkins implementation remains on `main`, while the `gitops`
-branch demonstrates an alternative deployment path:
-
-```text
-GitHub push to gitops
-        |
-        v
-GitHub Actions
-        |
-        | OIDC
-        v
-AWS STS
-        |
-        v
-GitHub Actions deployment role
-        |
-        +--> Build frontend/backend images
-        |
-        +--> Push immutable images to ECR
-        |
-        +--> Register new ECS task-definition revisions
-        |
-        +--> Deploy frontend/backend services
-        |
-        +--> Wait for ECS stability
-        |
-        +--> Validate the live application
-```
-
-AWS authentication uses GitHub OIDC and temporary STS credentials rather than
-long-lived AWS access keys.
-
-The IAM trust relationship is restricted to the immutable identity of this
-repository and the `gitops` branch.
-
-The GitOps IAM configuration is managed separately under:
-
-```text
-terraform/gitops-iam/
-```
-
-The complete workflow, implementation details, and validation evidence are
-available on the `gitops` branch.
-
----
-
-# Auto Scaling Validation
-
-Both ECS services use target-tracking Application Auto Scaling based on:
-
-```text
-Metric:
-ECSServiceAverageCPUUtilization
-
-Target:
-50%
-
-Minimum capacity:
-1 task
-
-Maximum capacity:
-4 tasks
-```
-
-## Load-test methodology
-
-The backend scaling policy was validated using a controlled-rate load test
-against:
-
-```text
-GET /api
-```
-
-Earlier unrestricted concurrency tests were intentionally not used as the final
-scaling proof.
-
-A high-concurrency test saturated the backend enough to cause Application Load
-Balancer health-check timeouts. ECS correctly replaced the unhealthy task, but
-that behavior represented ECS health reconciliation rather than horizontal
-autoscaling.
-
-The final validation therefore used a controlled request rate so CPU utilization
-could remain above the target long enough for the target-tracking policy to
-evaluate sustained demand.
-
-Final controlled load:
-
-```text
-Target:   backend /api endpoint
-Rate:     1,800 requests/second
-Duration: 5 minutes
-Source:   Jenkins EC2 host
-```
-
-Running the load generator inside AWS removed the operator workstation and home
-network from the load-generation path.
-
-## Observed scaling behavior
-
-Before load:
-
-```text
-Desired: 1
-Running: 1
-Pending: 0
-```
-
-Under sustained CPU pressure, the CloudWatch target-tracking high alarm entered:
-
-```text
-ALARM
-```
-
-Application Auto Scaling then changed the backend service capacity:
-
-```text
-Desired: 2
-Running: 1
-Pending: 1
-```
-
-After the new Fargate task became healthy:
-
-```text
-Desired: 2
-Running: 2
-Pending: 0
-```
-
-Application Auto Scaling recorded the scale-out activity as:
-
-```text
-Status: Successful
-Policy: ecs-fargate-cicd-backend-cpu-50
-Cause: target-tracking high CPU alarm entered ALARM
-```
-
-CloudWatch alarm history recorded the control-loop transition:
-
-```text
-INSUFFICIENT_DATA -> OK
-OK                -> ALARM
-ALARM             -> OK
-```
-
-This proves that the configured scaling range is not merely declarative.
-Application Auto Scaling changed ECS desired capacity in response to sustained
-CPU utilization.
-
-The validated control path was:
-
-```text
-controlled application load
-        |
-        v
-ECS service CPU > 50%
-        |
-        v
-CloudWatch target-tracking alarm
-        |
-        v
-Application Auto Scaling policy
-        |
-        v
-Desired count 1 -> 2
-        |
-        v
-new Fargate task launched
-        |
-        v
-Running count 1 -> 2
-```
-
-Evidence:
-
-```text
-docs/evidence/screenshots/scaling/
-```
-
+- [x] Local application validation
+- [x] Backend `/health` endpoint
+- [x] Environment-aware application configuration
+- [x] Backend containerization
+- [x] Frontend multi-stage containerization
+- [x] Non-root container runtimes
+- [x] Local path-routing integration validation
+- [x] Terraform remote-state bootstrap
+- [x] Amazon ECR repositories
+- [x] Two-AZ VPC architecture
+- [x] Public/private subnet separation
+- [x] One NAT Gateway per Availability Zone
+- [x] Application Load Balancer
+- [x] Path-based `/api` routing
+- [x] ECS Fargate cluster
+- [x] Frontend ECS service
+- [x] Backend ECS service
+- [x] ECS task-definition CPU/memory configuration
+- [x] Application Auto Scaling configuration
+- [x] 50% CPU target-tracking policy
+- [x] Jenkins infrastructure through Terraform
+- [x] Jenkins host configuration through Ansible
+- [x] Jenkins pipeline from SCM
+- [x] Checkov Terraform scanning
+- [x] Trivy container security gate
+- [x] Immutable ECR image tagging
+- [x] Automated ECS deployment
+- [x] ECS steady-state validation
+- [x] Live post-deployment validation
+- [x] GitHub webhook-triggered Jenkins builds
+- [x] Auto Scaling load-test evidence
+- [x] GitHub Actions GitOps bonus
