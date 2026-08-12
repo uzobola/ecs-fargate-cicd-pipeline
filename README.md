@@ -39,6 +39,16 @@ when frontend-to-backend communication is working.
 
 ---
 
+**Jump to:** 
+[Architecture](#architecture) ·
+[CI/CD flow](#cicd-delivery-flow) ·
+[Security controls](#security-controls) ·
+[Verified outcomes](#verified-outcomes) ·
+[Reproduce](#reproduce-the-environment) ·
+[Evidence](#documentation)
+
+---
+
 ## What This Demonstrates
 
 - **Infrastructure as Code** — Terraform provisions the two-AZ VPC, ALB,
@@ -173,14 +183,16 @@ access key is stored in Jenkins.
 
 | Control | Implementation | Evidence |
 |---|---|---|
-| AWS deployment identity | Jenkins uses EC2 instance-profile temporary credentials; no static AWS keys | `Jenkinsfile`, IAM permissions matrix |
-| GitOps authentication | GitHub Actions uses OIDC federation to AWS STS with repository- and branch-scoped trust | Security model, GitOps IAM |
-| Container release gate | Trivy blocks fixable HIGH/CRITICAL findings | `docs/evidence/trivy-security-gate.md` |
-| IaC security review | Checkov runs before application deployment with documented soft-fail governance | `Jenkinsfile`, security model |
-| Artifact integrity | Immutable ECR tags are derived from source revision and build/run identity | ECR configuration, task definitions |
-| Network isolation | ALB is public; Fargate tasks are private with ALB-only ingress | Architecture, security model |
-| Terraform state | Encrypted, versioned, TLS-only, public access blocked, S3-native locking | Remote-state security checklist |
-| Deployment authorization | CI/CD can deploy only the project services and pass only the application execution roles | IAM permissions matrix |
+| AWS deployment identity | Jenkins uses EC2 instance-profile temporary credentials; no static AWS keys | [Jenkinsfile](Jenkinsfile), [IAM Permissions Matrix](docs/iam-permissions-matrix.md) |
+| GitOps authentication | On the GitOps branch, GitHub Actions uses OIDC federation to AWS STS with repository- and branch-scoped trust | [Security Model](docs/security-model.md), [GitOps IAM](https://github.com/uzobola/ecs-fargate-cicd-pipeline/tree/gitops/terraform/gitops-iam) |
+| Container release gate | Trivy blocks fixable HIGH/CRITICAL findings | [Trivy Security-Gate Evidence](docs/evidence/trivy-security-gate.md) |
+| IaC security review | Checkov runs before application deployment with documented soft-fail governance | [Jenkinsfile](Jenkinsfile), [Security Model](docs/security-model.md) |
+| Artifact integrity | Immutable ECR tags are derived from source revision and build/run identity | [Jenkinsfile](Jenkinsfile), [Terraform Infrastructure](terraform/infrastructure/) |
+| Network isolation | ALB is public; Fargate tasks are private with ALB-only ingress | [Architecture](docs/architecture.md), [Security Model](docs/security-model.md) |
+| Terraform state | Encrypted, versioned, TLS-only, public access blocked, S3-native locking | [Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md) |
+| Deployment authorization | CI/CD can deploy only the project services and pass only the application execution roles | [IAM Permissions Matrix](docs/iam-permissions-matrix.md) |
+
+
 
 For the full trust-boundary, identity and residual-risk
 see [Security Model](docs/security-model.md).
@@ -881,6 +893,20 @@ redundancy.
     ├── Implementation-Guide/
     └── evidence/
 ```
+
+Key locations:
+
+[Jenkins pipeline](docs/Implementation-Guide/phase-05-jenkins-cicd.md)
+[Jenkins Ansible configuration](ansible/jenkins.yml)
+[Terraform Infrastructure](terraform/bootstrap/)
+[Terraform Infrastructure](terraform/infrastructure/)
+[Architecture](docs/architecture.md)
+[Design Decisions](docs/design-decisions.md)
+[Security Model](docs/security-model.md)
+IAM Permissions Matrix
+[Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
+[Cleanup and Teardown](docs/clean-up.md)
+[Implementation Guide](docs/Implementation-Guide/)
 
 ---
 
