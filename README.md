@@ -863,19 +863,48 @@ Measured load-test results and scaling evidence are documented in:
 
 # Documentation
 
-Detailed phase-by-phase replication instructions:
+## Implementation
+
+Detailed phase-by-phase instructions for reproducing the environment:
 
 [Implementation Guide](docs/Implementation-Guide/)
 
-System architecture and control-plane boundaries:
+## Architecture and Design
+
+System architecture, runtime relationships, and control-plane boundaries:
 
 [Architecture](docs/architecture.md)
 
-Architecture and engineering decisions:
+Architecture decisions, tradeoffs, and engineering rationale:
 
 [Design Decisions](docs/design-decisions.md)
 
-Validation evidence:
+## Security
+
+Trust boundaries, network controls, workload identity, CI/CD security,
+supply-chain controls, and residual risks:
+
+[Security Model](docs/security-model.md)
+
+Reviewable IAM principal, action, resource, condition, and permission boundaries:
+
+[IAM Permissions Matrix](docs/iam-permissions-matrix.md)
+
+Terraform remote-state encryption, locking, recovery, access governance, and
+security validation:
+
+[Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
+
+## Operations
+
+Environment teardown, state backup, dependency-aware destruction, and final
+AWS cleanup:
+
+[Cleanup and Teardown](docs/cleanup.md)
+
+## Validation Evidence
+
+Deployment, security-gate, infrastructure, CI/CD, and Auto Scaling evidence:
 
 [Evidence](docs/evidence/)
 
@@ -923,23 +952,6 @@ A production design should normally use isolated build agents.
 
 The configured scaling range meets the challenge requirement, but the baseline
 desired count of one does not provide full workload-level redundancy.
-
----
-
-# Submission
-
-The submission form should contain:
-
-```text
-Jenkins URL
-Jenkins grader credentials
-Frontend public URL
-```
-
-Credentials are intentionally not committed to this repository.
-
-The private repository must be shared with the grader account specified in the
-challenge instructions.
 
 ---
 
@@ -993,10 +1005,6 @@ The complete workflow, implementation details, and validation evidence are
 available on the `gitops` branch.
 
 ---
-
-# Auto Scaling Validation
-
-Both ECS services use target-tracking Application Auto Scaling based on:
 
 # Auto Scaling Validation
 
