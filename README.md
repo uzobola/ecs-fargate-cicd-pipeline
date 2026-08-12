@@ -70,7 +70,7 @@ when frontend-to-backend communication is working.
 
 - **Private application runtime** — Fargate tasks run without public IPs and
   accept application traffic only from the ALB security group.
-  
+
 - **Validated scaling** — CPU target tracking scales each ECS service between
   1 and 4 tasks; controlled load testing demonstrated backend scale-out from
   1 to 2 running tasks.
@@ -78,6 +78,8 @@ when frontend-to-backend communication is working.
 ---
 
 # Architecture
+
+![AWS ECS Fargate CI/CD Architecture](docs/diagrams/architecture.png)
 
 For the full runtime, network, identity, scaling, and control-plane model, see
 [Architecture](docs/architecture.md).
@@ -890,14 +892,16 @@ redundancy.
 │   └── infrastructure/
 │
 └── docs/
-    ├── architecture.md
-    ├── design-decisions.md
-    ├── security-model.md
-    ├── iam-permissions-matrix.md
-    ├── terraform-remote-state-security-checklist.md
-    ├── cleanup.md
-    ├── Implementation-Guide/
-    └── evidence/
+  ├── architecture.md
+  ├── design-decisions.md
+  ├── security-model.md
+  ├── iam-permissions-matrix.md
+  ├── terraform-remote-state-security-checklist.md
+  ├── cleanup.md
+  ├── diagrams/
+  │   └── architecture.png
+  ├── Implementation-Guide/
+  └── evidence/
 ```
 
 Key locations:

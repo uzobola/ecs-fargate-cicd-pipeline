@@ -17,6 +17,12 @@ Architecture tradeoffs and rationale are recorded in
 
 ---
 
+# Architecture
+
+![AWS ECS Fargate CI/CD Architecture](diagrams/architecture.png)
+
+---
+
 ## 1. System Context
 
 The application is a two-service web application:
