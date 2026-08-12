@@ -39,13 +39,14 @@ when frontend-to-backend communication is working.
 
 ---
 
-**Jump to:** 
-[Architecture](#architecture) ·
-[CI/CD flow](#cicd-delivery-flow) ·
-[Security controls](#security-controls) ·
-[Verified outcomes](#verified-outcomes) ·
-[Reproduce](#reproduce-the-environment) ·
-[Evidence](#documentation)
+**Jump to:**
+
+- [Architecture](#architecture)
+- [CI/CD Delivery Flow](#cicd-delivery-flow)
+- [Security Controls](#security-controls)
+- [Verified Outcomes](#verified-outcomes)
+- [Reproduce the Environment](#reproduce-the-environment)
+- [Validation Evidence](#validation-evidence)
 
 ---
 
@@ -194,8 +195,8 @@ access key is stored in Jenkins.
 
 
 
-For the full trust-boundary, identity and residual-risk
-see [Security Model](docs/security-model.md).
+For the full trust-boundary, identity, compromise-scenario, and residual-risk
+analysis, see [Security Model](docs/security-model.md).
 
 ---
 
@@ -896,17 +897,19 @@ redundancy.
 
 Key locations:
 
-[Jenkins pipeline](docs/Implementation-Guide/phase-05-jenkins-cicd.md)
-[Jenkins Ansible configuration](ansible/jenkins.yml)
-[Terraform remote-state bootstrap](terraform/bootstrap/)
-[Terraform application infrastructure](terraform/infrastructure/)
-[Architecture](docs/architecture.md)
-[Design Decisions](docs/design-decisions.md)
-[Security Model](docs/security-model.md)
-[IAM Permissions Matrix](docs/iam-permissions-matrix.md)
-[Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
-[Cleanup and Teardown](docs/cleanup.md)
-[Implementation Guide](docs/Implementation-Guide/)
+- [Jenkinsfile](Jenkinsfile)
+- [Jenkins CI/CD implementation guide](docs/Implementation-Guide/phase-05-jenkins-cicd.md)
+- [Jenkins Ansible configuration](ansible/jenkins.yml)
+- [Terraform remote-state bootstrap](terraform/bootstrap/)
+- [Terraform application infrastructure](terraform/infrastructure/)
+- [Architecture](docs/architecture.md)
+- [Design Decisions](docs/design-decisions.md)
+- [Security Model](docs/security-model.md)
+- [IAM Permissions Matrix](docs/iam-permissions-matrix.md)
+- [Terraform Remote-State Security Checklist](docs/terraform-remote-state-security-checklist.md)
+- [Cleanup and Teardown](docs/cleanup.md)
+- [Implementation Guide](docs/Implementation-Guide/)
+- [Validation Evidence](docs/evidence/)
 
 ---
 
