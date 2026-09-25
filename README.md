@@ -2,7 +2,7 @@
 
 A two-service application deployed to AWS ECS Fargate with Terraform,
 automated Jenkins CI/CD, container security gates, immutable ECR delivery,
-runtime validation, and CPU-based Application Auto Scaling.
+runtime validation, and CPU-based Application Auto Scaling.Secure ECS/Fargate CI/CD platform: Terraform-provisioned AWS infrastructure, Jenkins pipeline using instance-profile credentials, GitHub Actions deploy path using OIDC, Checkov and Trivy gates, immutable ECR images, and target-tracking autoscaling.
 
 ## Overview
 
