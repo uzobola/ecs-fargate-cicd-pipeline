@@ -9,7 +9,7 @@ runtime validation, and CPU-based Application Auto Scaling.Secure ECS/Fargate CI
 > | Path | Branch | What it demonstrates |
 > |---|---|---|
 > | Jenkins | `main` | EC2 instance-profile credentials, Checkov and Trivy gates, immutable ECR images, post-deploy validation |
-> | GitHub Actions + OIDC | [`<branch>`](https://github.com/uzobola/ecs-fargate-cicd-pipeline/tree/gitops) | Short-lived STS credentials through GitHub OIDC federation; no AWS access keys stored in GitHub. [Workflow file](https://github.com/uzobola/ecs-fargate-cicd-pipeline/blob/gitops/.github/workflows/deploy.yml) |
+> | GitHub Actions + OIDC | [`gitopa`](https://github.com/uzobola/ecs-fargate-cicd-pipeline/tree/gitops) | Short-lived STS credentials through GitHub OIDC federation; no AWS access keys stored in GitHub. [Workflow file](https://github.com/uzobola/ecs-fargate-cicd-pipeline/blob/gitops/.github/workflows/deploy.yml) |
 >
 > **Why a separate branch:** <one honest sentence>
 
