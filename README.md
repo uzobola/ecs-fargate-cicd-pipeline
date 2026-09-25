@@ -4,6 +4,15 @@ A two-service application deployed to AWS ECS Fargate with Terraform,
 automated Jenkins CI/CD, container security gates, immutable ECR delivery,
 runtime validation, and CPU-based Application Auto Scaling.Secure ECS/Fargate CI/CD platform: Terraform-provisioned AWS infrastructure, Jenkins pipeline using instance-profile credentials, GitHub Actions deploy path using OIDC, Checkov and Trivy gates, immutable ECR images, and target-tracking autoscaling.
 
+> **Two delivery paths, two branches**
+>
+> | Path | Branch | What it demonstrates |
+> |---|---|---|
+> | Jenkins | `main` | EC2 instance-profile credentials, Checkov and Trivy gates, immutable ECR images, post-deploy validation |
+> | GitHub Actions + OIDC | [`<branch>`](https://github.com/uzobola/ecs-fargate-cicd-pipeline/tree/<branch>) | Short-lived STS credentials through GitHub OIDC federation; no AWS access keys stored in GitHub. [Workflow file](https://github.com/uzobola/ecs-fargate-cicd-pipeline/blob/<branch>/.github/workflows/<file>.yml) |
+>
+> **Why a separate branch:** <one honest sentence>
+
 ## Overview
 
 The application consists of:
